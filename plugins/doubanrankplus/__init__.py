@@ -30,7 +30,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.2"
+    plugin_version = "0.0.3"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -677,13 +677,14 @@ class DoubanRankPlus(_PluginBase):
                     meta.year = year
                     if mtype:
                         meta.type = mtype
+
                     # 识别媒体信息
-                    tmdbinfo = None
                     if douban_id:
                         # 识别豆瓣信息
                         logger.debug(
                             f"开始通过豆瓣ID获取TMDB信息::: douban_id:::{douban_id}, meta.type:::{meta.type}"
                         )
+
                         if settings.RECOGNIZE_SOURCE == "themoviedb":
                             tmdbinfo = self.mediachain.get_tmdbinfo_by_doubanid(
                                 doubanid=douban_id, mtype=meta.type
@@ -726,6 +727,10 @@ class DoubanRankPlus(_PluginBase):
                             )
                             continue
 
+                    # logger.debug(f"{mediainfo}:::{mediainfo}")
+                    logger.debug(
+                        f"{mediainfo.title_year} mediainfo.type:::{mediainfo.type}"
+                    )
                     # 保存路径
                     save_path = None
                     if customize_save_paths:
@@ -735,7 +740,7 @@ class DoubanRankPlus(_PluginBase):
                             save_path = customize_save_paths["movie"]
 
                     is_added = False
-                    number_of_seasons = tmdbinfo.get("number_of_seasons")
+                    number_of_seasons = mediainfo.number_of_seasons
                     logger.debug(f"number_of_seasons:::{number_of_seasons}")
                     # 如果是剧集且开启全季订阅，则轮流下载每一季
                     if (
@@ -744,7 +749,7 @@ class DoubanRankPlus(_PluginBase):
                         and number_of_seasons
                     ):
 
-                        genre_ids = tmdbinfo.get("genre_ids")
+                        genre_ids = mediainfo.genre_ids
                         ANIME_GENRE_ID = 16
                         logger.debug(f"{mediainfo.title_year} genre_ids::: {genre_ids}")
                         if ANIME_GENRE_ID in genre_ids and customize_save_paths:
