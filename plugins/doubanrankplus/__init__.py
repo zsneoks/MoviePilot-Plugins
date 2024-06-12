@@ -30,7 +30,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.1"
+    plugin_version = "0.0.2"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -640,8 +640,8 @@ class DoubanRankPlus(_PluginBase):
                 addr_result = DoubanRankPlus.__get_addr_save_paths(_addr)
                 addr = addr_result.get("addr")
                 customize_save_paths = addr_result.get("customize_save_paths")
-                logger.debug(f"addr: {addr}")
-                logger.debug(f"customize_save_paths: {customize_save_paths}")
+                logger.debug(f"addr::: {addr}")
+                logger.debug(f"customize_save_paths::: {customize_save_paths}")
 
                 rss_infos = self.__get_rss_info(addr)
                 if not rss_infos:
@@ -746,7 +746,11 @@ class DoubanRankPlus(_PluginBase):
 
                         genre_ids = tmdbinfo.get("genre_ids")
                         ANIME_GENRE_ID = 16
-                        if ANIME_GENRE_ID in genre_ids:
+                        logger.debug(f"{mediainfo.title_year} genre_ids::: {genre_ids}")
+                        if ANIME_GENRE_ID in genre_ids and customize_save_paths:
+                            logger.info(
+                                f"{mediainfo.title_year} 为动漫类别, 动漫自定义保存路径为: {customize_save_paths['anime']}"
+                            )
                             save_path = customize_save_paths["anime"]
                         # if number_of_seasons > 1:
                         for i in range(1, number_of_seasons + 1):
@@ -875,7 +879,7 @@ class DoubanRankPlus(_PluginBase):
                     itemtype = DomUtils.tag_value(item, "type", default="")
 
                     if not title and not link:
-                        logger.warn(f"条目标题和链接均为空，无法处理")
+                        logger.warn("条目标题和链接均为空，无法处理")
                         continue
                     rss_info["title"] = title
                     rss_info["link"] = link
