@@ -34,7 +34,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
-    author_url = "https://github.com/boeto/MoviePilot-Plugins.git"
+    author_url = "https://github.com/jxxghp"
     # 插件配置项ID前缀
     plugin_config_prefix = "doubanrankplus_"
     # 加载顺序
@@ -803,14 +803,20 @@ class DoubanRankPlus(_PluginBase):
         season,
         save_path,
     ) -> bool:
-        logger.debug(f"{mediainfo.title} 的自定义保存路径为: {save_path}")
+        if save_path:
+            logger.info(f"{mediainfo.title_year} 的自定义保存路径为: {save_path}")
+
         # 判断上映年份是否符合要求
         if self._release_year and int(mediainfo.year) < self._release_year:
-            logger.info(f"{mediainfo.year} 上映年份不符合要求")
+            logger.info(
+                f"{mediainfo.title_year} 上映年份: {mediainfo.year}, 不符合要求"
+            )
             return False
         # 判断评分是否符合要求
         if self._vote and mediainfo.vote_average < self._vote:
-            logger.info(f"{mediainfo.title_year} 评分不符合要求")
+            logger.info(
+                f"{mediainfo.title_year} 评分: {mediainfo.vote_average}, 不符合要求"
+            )
             return False
 
         # 查询缺失的媒体信息
@@ -859,7 +865,6 @@ class DoubanRankPlus(_PluginBase):
             for item in items:
                 try:
                     rss_info = {}
-                    logger.debug(f"rss item::: {item}")
                     # 标题
                     title = DomUtils.tag_value(item, "title", default="")
                     # 链接
