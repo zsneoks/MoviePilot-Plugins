@@ -683,7 +683,7 @@ class DoubanRankPlus(_PluginBase):
                     if douban_id:
                         # 识别豆瓣信息
                         logger.debug(
-                            f"开始通过豆瓣ID获取TMDB信息::: douban_id:::{douban_id}, meta.type:::{meta.type}"
+                            f"开始通过豆瓣ID获取TMDB信息::: douban_id:::{douban_id}, mtype:::{mtype}"
                         )
 
                         if settings.RECOGNIZE_SOURCE == "themoviedb":
