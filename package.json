@@ -3,7 +3,7 @@
     "name": "豆瓣榜单订阅Plus",
     "description": "自动订阅豆瓣热门榜单。增加自定义保存路径，全季度订阅，上映年份过滤。",
     "labels": "订阅",
-    "version": "0.0.1",
+    "version": "0.0.4",
     "icon": "movie.jpg",
     "author": "jxxghp,boeto",
     "level": 2,
