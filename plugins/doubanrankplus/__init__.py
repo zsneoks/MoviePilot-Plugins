@@ -30,7 +30,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.3"
+    plugin_version = "0.0.4"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -679,6 +679,7 @@ class DoubanRankPlus(_PluginBase):
                         meta.type = mtype
 
                     # 识别媒体信息
+                    # tmdbinfo = None
                     if douban_id:
                         # 识别豆瓣信息
                         logger.debug(
@@ -687,7 +688,7 @@ class DoubanRankPlus(_PluginBase):
 
                         if settings.RECOGNIZE_SOURCE == "themoviedb":
                             tmdbinfo = self.mediachain.get_tmdbinfo_by_doubanid(
-                                doubanid=douban_id, mtype=meta.type
+                                doubanid=douban_id, mtype=mtype
                             )
 
                             if not tmdbinfo:
@@ -698,14 +699,19 @@ class DoubanRankPlus(_PluginBase):
 
                             tmdbinfo_media_type = tmdbinfo.get("media_type")
                             logger.debug(
-                                f'通过豆瓣ID {douban_id} 获取到TMDB信息::: tmdbinfo.id: {tmdbinfo.get("id")},tmdbinfo.media_type: {tmdbinfo_media_type}'
+                                f'通过豆瓣ID {douban_id} 获取到TMDB信息::: tmdbinfo.id: {tmdbinfo.get("id")}, tmdbinfo.media_type: {tmdbinfo_media_type}'
                             )
+
+                            if tmdbinfo_media_type:
+                                mtype = tmdbinfo_media_type
+                                meta.type = tmdbinfo_media_type
 
                             mediainfo = self.chain.recognize_media(
                                 meta=meta,
                                 tmdbid=tmdbinfo.get("id"),
-                                mtype=tmdbinfo_media_type,
+                                mtype=mtype,
                             )
+
                             if not mediainfo:
                                 logger.warn(
                                     f'TMDBID {tmdbinfo.get("id")} 未识别到媒体信息'
