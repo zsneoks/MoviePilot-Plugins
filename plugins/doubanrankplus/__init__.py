@@ -2,8 +2,9 @@ import datetime
 import re
 import xml.dom.minidom
 from threading import Event
-from typing import Tuple, List, Dict, Any
-
+from typing import Optional, Tuple, List, Dict, Any, TypedDict
+import time
+import random
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -21,6 +22,40 @@ from app.schemas import MediaType
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
 
+from enum import Enum
+
+
+class Status(Enum):
+    UNRECOGNIZED = "未识别"
+    YEAR_NOT_MATCH = "年份不符合"
+    RATING_NOT_MATCH = "评分不符合"
+    MEDIA_EXISTS = "媒体库已存在"
+    SUBSCRIPTION_EXISTS = "订阅已存在"
+    SUBSCRIPTION_ADDED = "已添加订阅"
+
+
+class HistoryPayload(TypedDict):
+    title: str
+    type: str
+    year: str
+    poster: Optional[str]
+    overview: str
+    tmdbid: str
+    doubanid: str
+    unique: str
+    time: str
+    time_full: str
+    vote: float
+    status: str
+
+
+class RssInfo(TypedDict):
+    title: str
+    link: str
+    mtype: str
+    doubanid: str | None
+    year: str | None
+
 
 class DoubanRankPlus(_PluginBase):
     # 插件名称
@@ -30,7 +65,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.4"
+    plugin_version = "0.0.5"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -44,10 +79,12 @@ class DoubanRankPlus(_PluginBase):
 
     # 退出事件
     _event = Event()
+
     # 私有属性
-    downloadchain: DownloadChain = None
-    subscribechain: SubscribeChain = None
-    mediachain: MediaChain = None
+    downloadchain: DownloadChain = DownloadChain()
+    subscribechain: SubscribeChain = SubscribeChain()
+    mediachain: MediaChain = MediaChain()
+
     _scheduler = None
     _douban_address = {
         "movie-ustop": "https://rsshub.app/douban/movie/ustop",
@@ -59,45 +96,77 @@ class DoubanRankPlus(_PluginBase):
         "movie-top250": "https://rsshub.app/douban/movie/weekly/movie_top250",
         "movie-top250-full": "https://rsshub.app/douban/list/movie_top250",
     }
+
     _enabled = False
     _cron = ""
     _onlyonce = False
-    _rss_addrs = []
-    _ranks = []
-    _vote = 0
+    _rss_addrs: List[str] = []
+    _ranks: List[str] = []
+    _vote = 0.0
     _clear = False
     _clearflag = False
+    _clear_unrecognized = False
+    _clearflag_unrecognized = False
     _proxy = False
     _is_seasons_all = False
     _release_year = 0
+    _min_sleep_time = 5
+    _max_sleep_time = 30
 
-    def init_plugin(self, config: dict = None):
+    def init_plugin(self, config: dict[str, Any] | None = None):
         self.downloadchain = DownloadChain()
         self.subscribechain = SubscribeChain()
         self.mediachain = MediaChain()
 
         if config:
-            self._enabled = config.get("enabled")
-            self._cron = config.get("cron")
-            self._proxy = config.get("proxy")
-            self._onlyonce = config.get("onlyonce")
+            self._enabled = config.get("enabled", self._enabled)
+            self._proxy = config.get("proxy", self._proxy)
+            self._onlyonce = config.get("onlyonce", self._onlyonce)
+            self._is_seasons_all = config.get("is_seasons_all", self._is_seasons_all)
 
-            self._is_seasons_all = config.get("is_seasons_all", False)
-            self._release_year = (
-                int(config.get("release_year", 0)) if config.get("release_year") else 0
+            self._cron = (
+                config.get("cron", "").strip()
+                if config.get("cron", "").strip()
+                else self._cron
             )
 
-            self._vote = float(config.get("vote")) if config.get("vote") else 0
-            rss_addrs = config.get("rss_addrs")
-            if rss_addrs:
-                if isinstance(rss_addrs, str):
-                    self._rss_addrs = rss_addrs.split("\n")
-                else:
-                    self._rss_addrs = rss_addrs
+            self._release_year = (
+                int(config.get("release_year", "").strip())
+                if config.get("release_year", "").strip()
+                else self._release_year
+            )
+
+            self._vote = (
+                float(str(config.get("vote", "")).strip())
+                if str(config.get("vote", "")).strip()
+                else self._vote
+            )
+
+            __sleep_time = config.get("sleep_time", "").strip()
+            if not __sleep_time:
+                logger.debug("未找到 sleep_time 配置项,使用默认值")
             else:
-                self._rss_addrs = []
-            self._ranks = config.get("ranks") or []
-            self._clear = config.get("clear")
+                sleep_time_list = re.split("[,，]", __sleep_time)
+
+                if len(sleep_time_list) != 2:
+                    logger.warn("休眠时间配置格式不正确,使用默认值")
+                else:
+                    __min_sleep_time, __max_sleep_time = map(int, sleep_time_list)
+                    if __max_sleep_time < __min_sleep_time:
+                        logger.warn("最大休眠时间小于最小休眠时间,使用默认值")
+                    else:
+                        self._min_sleep_time = __min_sleep_time
+                        self._max_sleep_time = __max_sleep_time
+
+            rss_addrs = config.get("rss_addrs")
+            if rss_addrs and isinstance(rss_addrs, str):
+                self._rss_addrs = rss_addrs.split("\n")
+
+            self._ranks = config.get("ranks", self._ranks)
+            self._clear = config.get("clear", self._clear)
+            self._clear_unrecognized = config.get(
+                "clear_unrecognized", self._clear_unrecognized
+            )
 
         # 停止现有任务
         self.stop_service()
@@ -120,12 +189,20 @@ class DoubanRankPlus(_PluginBase):
                     self._scheduler.start()
 
             if self._onlyonce or self._clear:
-                # 关闭一次性开关
-                self._onlyonce = False
                 # 记录缓存清理标志
                 self._clearflag = self._clear
                 # 关闭清理缓存
                 self._clear = False
+
+            if self._onlyonce or self._clear_unrecognized:
+                # 记录未识别缓存清理标志
+                self._clearflag_unrecognized = self._clear_unrecognized
+                # 关闭未识别清理缓存
+                self._clear_unrecognized = False
+
+            if self._onlyonce or self._clear or self._clear_unrecognized:
+                # 关闭一次性开关
+                self._onlyonce = False
                 # 保存配置
                 self.__update_config()
 
@@ -134,7 +211,7 @@ class DoubanRankPlus(_PluginBase):
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
-        pass
+        return []
 
     def get_api(self) -> List[Dict[str, Any]]:
         """
@@ -304,6 +381,19 @@ class DoubanRankPlus(_PluginBase):
                                 "component": "VCol",
                                 "content": [
                                     {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "sleep_time",
+                                            "label": "随机休眠时间范围",
+                                            "placeholder": "默认: 5,30。减少豆瓣访问频率。格式：最小秒数,最大秒数。",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "content": [
+                                    {
                                         "component": "VSelect",
                                         "props": {
                                             "chips": True,
@@ -347,7 +437,7 @@ class DoubanRankPlus(_PluginBase):
                                         },
                                     }
                                 ],
-                            }
+                            },
                         ],
                     },
                     {
@@ -373,7 +463,7 @@ class DoubanRankPlus(_PluginBase):
                         "content": [
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
+                                "props": {"cols": 12, "md": 4},
                                 "content": [
                                     {
                                         "component": "VSwitch",
@@ -383,20 +473,36 @@ class DoubanRankPlus(_PluginBase):
                                         },
                                     }
                                 ],
-                            }
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 4},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "clear_unrecognized",
+                                            "label": "清理未识别历史记录",
+                                        },
+                                    }
+                                ],
+                            },
                         ],
                     },
                 ],
             }
         ], {
-            "enabled": False,
-            "cron": "",
-            "proxy": False,
-            "onlyonce": False,
-            "vote": "",
-            "ranks": [],
-            "rss_addrs": "",
-            "clear": False,
+            "enabled": self._enabled,
+            "cron": self._cron,
+            "proxy": self._proxy,
+            "onlyonce": self._onlyonce,
+            "vote": self._vote,
+            "ranks": self._ranks,
+            "rss_addrs": self._rss_addrs,
+            "clear": self._clear,
+            "clear_unrecognized": self._clear_unrecognized,
+            "release_year": f"{self._release_year}",
+            "sleep_time": f"{self._min_sleep_time},{self._max_sleep_time}",
         }
 
     def get_page(self) -> List[dict]:
@@ -421,10 +527,32 @@ class DoubanRankPlus(_PluginBase):
         contents = []
         for history in historys:
             title = history.get("title")
+            if len(title) > 8:
+                title = title[:8] + "..."
+            title = title.replace(" ", "")
+            year = history.get("year")
+            vote = history.get("vote")
             poster = history.get("poster")
-            mtype = history.get("type")
             time_str = history.get("time")
+            mtype = history.get("type")
             doubanid = history.get("doubanid")
+            tmdbid = history.get("tmdbid")
+
+            status = history.get("status")
+            unique = history.get("unique")
+
+            if (
+                tmdbid
+                and tmdbid != "0"
+                and (mtype == MediaType.MOVIE.value or mtype == MediaType.TV.value)
+            ):
+                type_str = "movie" if mtype == MediaType.MOVIE.value else "tv"
+                href = f"https://www.themoviedb.org/{type_str}/{tmdbid}"
+            elif doubanid and doubanid != "0":
+                href = f"https://movie.douban.com/subject/{doubanid}"
+            else:
+                href = "#"
+
             contents.append(
                 {
                     "component": "VCard",
@@ -439,7 +567,7 @@ class DoubanRankPlus(_PluginBase):
                                     "api": "plugin/DoubanRankPlus/delete_history",
                                     "method": "get",
                                     "params": {
-                                        "key": f"doubanrankplus: {title} (DB:{doubanid})",
+                                        "key": f"{unique}",
                                         "apikey": settings.API_TOKEN,
                                     },
                                 }
@@ -458,8 +586,8 @@ class DoubanRankPlus(_PluginBase):
                                             "component": "VImg",
                                             "props": {
                                                 "src": poster,
-                                                "height": 120,
-                                                "width": 80,
+                                                "height": 150,
+                                                "width": 100,
                                                 "aspect-ratio": "2/3",
                                                 "class": "object-cover shadow ring-gray-500",
                                                 "cover": True,
@@ -473,13 +601,13 @@ class DoubanRankPlus(_PluginBase):
                                         {
                                             "component": "VCardTitle",
                                             "props": {
-                                                "class": "ps-1 pe-5 break-words whitespace-break-spaces"
+                                                "class": "py-1 pl-2 pr-4 text-lg whitespace-nowrap"
                                             },
                                             "content": [
                                                 {
                                                     "component": "a",
                                                     "props": {
-                                                        "href": f"https://movie.douban.com/subject/{doubanid}",
+                                                        "href": f"{href}",
                                                         "target": "_blank",
                                                     },
                                                     "text": title,
@@ -489,12 +617,27 @@ class DoubanRankPlus(_PluginBase):
                                         {
                                             "component": "VCardText",
                                             "props": {"class": "pa-0 px-2"},
-                                            "text": f"类型：{mtype}",
+                                            "text": f"类型: {mtype}",
                                         },
                                         {
                                             "component": "VCardText",
                                             "props": {"class": "pa-0 px-2"},
-                                            "text": f"时间：{time_str}",
+                                            "text": f"年份: {year}",
+                                        },
+                                        {
+                                            "component": "VCardText",
+                                            "props": {"class": "pa-0 px-2"},
+                                            "text": f"评分: {vote}",
+                                        },
+                                        {
+                                            "component": "VCardText",
+                                            "props": {"class": "pa-0 px-2"},
+                                            "text": f"时间: {time_str}",
+                                        },
+                                        {
+                                            "component": "VCardText",
+                                            "props": {"class": "pa-0 px-2"},
+                                            "text": f"状态: {status}",
                                         },
                                     ],
                                 },
@@ -533,6 +676,7 @@ class DoubanRankPlus(_PluginBase):
         """
         删除同步历史记录
         """
+        logger.debug(f"删除同步历史记录:::{key}")
         if apikey != settings.API_TOKEN:
             return schemas.Response(success=False, message="API密钥错误")
         # 历史记录
@@ -546,22 +690,438 @@ class DoubanRankPlus(_PluginBase):
 
     def __update_config(self):
         """
-        列新配置
+        更新配置
         """
-        self.update_config(
-            {
-                "enabled": self._enabled,
-                "cron": self._cron,
-                "onlyonce": self._onlyonce,
-                "vote": self._vote,
-                "ranks": self._ranks,
-                "rss_addrs": "\n".join(map(str, self._rss_addrs)),
-                "clear": self._clear,
-                "is_seasons_all": self._is_seasons_all,
-                "release_year": self._release_year,
-            }
-        )
+        __config = {
+            "enabled": self._enabled,
+            "cron": self._cron,
+            "onlyonce": self._onlyonce,
+            "vote": self._vote,
+            "ranks": self._ranks,
+            "rss_addrs": "\n".join(map(str, self._rss_addrs)),
+            "clear": self._clear,
+            "clear_unrecognized": self._clear_unrecognized,
+            "is_seasons_all": self._is_seasons_all,
+            "release_year": str(self._release_year),
+            "sleep_time": f"{self._min_sleep_time},{self._max_sleep_time}",
+        }
+        logger.debug(f"更新配置 {__config}")
+        self.update_config(__config)
 
+    def __refresh_rss(self):
+        """
+        刷新RSS
+        """
+        logger.info("开始刷新豆瓣榜单Plus ...")
+        addr_list = self._rss_addrs + [
+            self._douban_address.get(rank) for rank in self._ranks
+        ]
+        if not addr_list:
+            logger.info("未设置榜单RSS地址")
+            return
+        else:
+            logger.info(f"共 {len(addr_list)} 个榜单RSS地址需要刷新")
+
+        # 读取历史记录
+        if self._clearflag:
+            history = []
+            self.save_data("history", history)
+            # 历史只清理一次
+            self._clearflag = False
+            logger.info(f"已清理所有 {self.plugin_name} 的历史记录")
+        else:
+            history = self.get_data("history", [])
+            if history and self._clearflag_unrecognized:
+                original_length = len(history)
+                history = [
+                    h for h in history if h.get("status") != Status.UNRECOGNIZED.value
+                ]
+                deleted_count = original_length - len(history)
+                self.save_data("history", history)
+                # 未识别历史只清理一次
+                self._clearflag_unrecognized = False
+                logger.info(
+                    f"已清理 {deleted_count} 条 {self.plugin_name} 未识别的历史记录"
+                )
+
+        addr_index = 0
+        for _addr in addr_list:
+            if not _addr:
+                continue
+            try:
+                addr_index = addr_index + 1
+                logger.info(f"获取RSS：{_addr} ...")
+                addr_result = DoubanRankPlus.__get_addr_save_paths(_addr)
+                addr = addr_result.get("addr")
+                customize_save_paths = addr_result.get("customize_save_paths")
+                logger.debug(f"addr::: {addr}")
+                logger.debug(f"customize_save_paths::: {customize_save_paths}")
+
+                rss_infos = self.__get_rss_info(addr)
+                if not rss_infos:
+                    logger.error(f"RSS地址：{addr} ，未查询到数据")
+                    continue
+                else:
+                    logger.info(f"RSS地址：{addr} ，共 {len(rss_infos)} 条数据")
+
+                rss_info_index = 0
+                for rss_info in rss_infos:
+                    if self._event.is_set():
+                        logger.info("订阅服务停止")
+                        return
+                    rss_info_index = rss_info_index + 1
+                    mtype = None
+
+                    logger.info(
+                        f"第 {addr_index}/{len(addr_list)} 条订阅数据处理进度: {rss_info_index}/{len(rss_infos)}"
+                    )
+
+                    logger.debug(f"rss_info:::{rss_info}")
+                    title = rss_info.get("title")
+                    if not title:
+                        logger.warn("标题为空，无法处理")
+                        continue
+
+                    douban_id = rss_info.get("doubanid")
+                    year = rss_info.get("year")
+                    type_str = rss_info.get("type")
+
+                    if type_str == "movie":
+                        mtype = MediaType.MOVIE
+                    elif type_str:
+                        mtype = MediaType.TV
+                    unique_flag = (
+                        f"{self.plugin_config_prefix}{title}_{year}_(DB:{douban_id})"
+                    )
+
+                    if unique_flag in [
+                        h.get("unique") for h in history if h is not None
+                    ]:
+                        logger.debug(f"已处理过：{unique_flag}")
+                        continue
+
+                    logger.debug(f"开始处理:::{title} ({year})")
+                    # 元数据
+                    meta = MetaInfo(title)
+                    meta.year = year
+                    if mtype:
+                        meta.type = mtype
+                    logger.debug(f"meta:::{meta}")
+
+                    # 识别媒体信息
+                    if douban_id:
+                        # 随机休眠
+                        random_sleep_time = round(
+                            random.uniform(self._min_sleep_time, self._max_sleep_time),
+                            1,
+                        )
+                        logger.debug(
+                            f"随机休眠范围::: {self._min_sleep_time},{self._max_sleep_time}"
+                        )
+                        if random_sleep_time:
+                            logger.info(
+                                f"随机休眠 {random_sleep_time} 秒, 避免访问豆瓣频繁过快导致无法获取数据"
+                            )
+                            time.sleep(random_sleep_time)
+
+                        # 识别豆瓣信息
+                        if settings.RECOGNIZE_SOURCE == "themoviedb":
+                            logger.debug(
+                                f"开始通过豆瓣ID {douban_id} 获取 {title} 的TMDB信息, mtype:::{mtype}"
+                            )
+
+                            tmdbinfo = self.mediachain.get_tmdbinfo_by_doubanid(
+                                doubanid=douban_id, mtype=mtype
+                            )
+
+                            if not tmdbinfo:
+                                logger.warn(
+                                    f"未能通过豆瓣ID: {douban_id} 未识别到 {title} 的TMDB信息"
+                                )
+                                # 存储历史记录
+                                history_payload = (
+                                    DoubanRankPlus.__get_history_unrecognized_payload(
+                                        title,
+                                        unique_flag,
+                                        year,
+                                        douban_id,
+                                    )
+                                )
+                                history.append(history_payload)
+                                # self.save_data("history", history)
+                                # logger.debug(f"已添加历史：{history_payload}")
+                                continue
+
+                            tmdbinfo_media_type = tmdbinfo.get("media_type", None)
+                            tmdb_id = tmdbinfo.get("id", None)
+
+                            logger.info(
+                                f"通过豆瓣ID: {douban_id} 识别到 {title} 的TMDB信息: TMDBID: {tmdb_id}, TMDBID Media Type: {tmdbinfo_media_type}"
+                            )
+
+                            if tmdbinfo_media_type:
+                                mtype = tmdbinfo_media_type
+                                meta.type = tmdbinfo_media_type
+
+                            mediainfo = self.chain.recognize_media(
+                                meta=meta,
+                                tmdbid=tmdb_id,
+                            )
+
+                            if not mediainfo:
+                                logger.warn(
+                                    f"{title} 的TMDBID: {tmdb_id} 未识别到媒体信息"
+                                )
+                                # 存储历史记录
+                                history_payload = (
+                                    DoubanRankPlus.__get_history_unrecognized_payload(
+                                        title, unique_flag, year, douban_id
+                                    )
+                                )
+                                history.append(history_payload)
+                                # self.save_data("history", history)
+                                # logger.debug(f"已添加历史：{history_payload}")
+                                continue
+
+                        else:
+                            logger.debug(
+                                f"开始通过豆瓣ID: {douban_id} 识别 {title} 的媒体信息"
+                            )
+                            mediainfo = self.chain.recognize_media(
+                                meta=meta,
+                                doubanid=douban_id,
+                            )
+                            if not mediainfo:
+                                logger.warn(
+                                    f"豆瓣ID {douban_id} 未识别到 {title} 的媒体信息"
+                                )
+                                # 存储历史记录
+                                history_payload = (
+                                    DoubanRankPlus.__get_history_unrecognized_payload(
+                                        title, unique_flag, year, douban_id
+                                    )
+                                )
+                                history.append(history_payload)
+                                # self.save_data("history", history)
+                                # logger.debug(f"已添加历史：{history_payload}")
+                                continue
+
+                    else:
+                        # 识别媒体信息
+                        logger.debug(f"开始识别 {title} 的媒体信息")
+                        mediainfo = self.chain.recognize_media(
+                            meta=meta,
+                        )
+                        if not mediainfo:
+                            logger.warn(
+                                f"未识别到 {title} 的媒体信息, 豆瓣ID: {douban_id}"
+                            )
+                            # 存储历史记录
+                            history_payload = (
+                                DoubanRankPlus.__get_history_unrecognized_payload(
+                                    title, unique_flag, year
+                                )
+                            )
+                            history.append(history_payload)
+                            # self.save_data("history", history)
+                            # logger.debug(f"已添加历史：{history_payload}")
+                            continue
+
+                    # logger.debug(f"{mediainfo}:::{mediainfo}")
+                    logger.debug(
+                        f"已识别到 {mediainfo.title_year} 的媒体类型: {mediainfo.type}"
+                    )
+                    # 保存路径
+                    save_path = None
+                    if customize_save_paths:
+                        if mediainfo.type == MediaType.TV:
+                            save_path = customize_save_paths["tv"]
+                        elif mediainfo.type == MediaType.MOVIE:
+                            save_path = customize_save_paths["movie"]
+
+                    status = "未知"
+                    number_of_seasons = mediainfo.number_of_seasons
+                    logger.debug(f"number_of_seasons:::{number_of_seasons}")
+                    # 如果是剧集且开启全季订阅，则轮流下载每一季
+                    if (
+                        self._is_seasons_all
+                        and mediainfo.type == MediaType.TV
+                        and number_of_seasons
+                    ):
+
+                        genre_ids = mediainfo.genre_ids
+                        ANIME_GENRE_ID = 16
+                        logger.debug(f"{mediainfo.title_year} genre_ids::: {genre_ids}")
+                        if ANIME_GENRE_ID in genre_ids and customize_save_paths:
+                            logger.info(
+                                f"{mediainfo.title_year} 为动漫类别, 动漫自定义保存路径为: {customize_save_paths['anime']}"
+                            )
+                            save_path = customize_save_paths["anime"]
+
+                        for i in range(1, number_of_seasons + 1):
+                            logger.debug(
+                                f"开始添加 {mediainfo.title_year} 第{i}/{number_of_seasons}季订阅"
+                            )
+                            status = self.__checke_and_add_subscribe(
+                                meta=meta,
+                                mediainfo=mediainfo,
+                                season=i,
+                                save_path=save_path,
+                            )
+                    else:
+                        status = self.__checke_and_add_subscribe(
+                            meta=meta,
+                            mediainfo=mediainfo,
+                            season=meta.begin_season,
+                            save_path=save_path,
+                        )
+
+                    # 存储历史记录
+                    history_payload = {
+                        "title": title,
+                        "type": mediainfo.type.value,
+                        "year": mediainfo.year,
+                        "poster": mediainfo.get_poster_image(),
+                        "overview": mediainfo.overview,
+                        "tmdbid": str(mediainfo.tmdb_id) or "0",
+                        "doubanid": douban_id or "0",
+                        "unique": unique_flag,
+                        "time": datetime.datetime.now().strftime("%m-%d %H:%M"),
+                        "time_full": datetime.datetime.now().strftime(
+                            "%Y-%m-%d %H:%M:%S"
+                        ),
+                        "vote": mediainfo.vote_average,
+                        "status": status.value,
+                    }
+                    history.append(history_payload)
+                    # self.save_data("history", history)
+                    # logger.debug(f"已添加历史：{history_payload}")
+
+            except Exception as e:
+                logger.error(str(e))
+            finally:
+                # 保存历史记录
+                logger.debug(f"保存榜单 {addr} 处理后的历史记录")
+                self.save_data("history", history)
+
+        logger.info("所有榜单RSS刷新完成")
+
+    def __checke_and_add_subscribe(
+        self,
+        meta,
+        mediainfo,
+        season,
+        save_path,
+    ) -> Status:
+        if save_path:
+            logger.info(f"{mediainfo.title_year} 的自定义保存路径为: {save_path}")
+
+        # 判断上映年份是否符合要求
+        if self._release_year and int(mediainfo.year) < self._release_year:
+            logger.info(
+                f"{mediainfo.title_year} 上映年份: {mediainfo.year}, 不符合要求"
+            )
+            return Status.YEAR_NOT_MATCH
+        # 判断评分是否符合要求
+        if self._vote and mediainfo.vote_average < self._vote:
+            logger.info(
+                f"{mediainfo.title_year} 评分: {mediainfo.vote_average}, 不符合要求"
+            )
+            return Status.RATING_NOT_MATCH
+
+        # 查询缺失的媒体信息
+        exist_flag, _ = self.downloadchain.get_no_exists_info(
+            meta=meta, mediainfo=mediainfo
+        )
+        if exist_flag:
+            logger.info(f"{mediainfo.title_year} 媒体库中已存在")
+            return Status.MEDIA_EXISTS
+
+        # 判断用户是否已经添加订阅
+        if self.subscribechain.exists(mediainfo=mediainfo, meta=meta):
+            logger.info(f"{mediainfo.title_year} 订阅已存在")
+            return Status.SUBSCRIPTION_EXISTS
+
+        # 添加订阅
+        self.subscribechain.add(
+            title=mediainfo.title,
+            year=mediainfo.year,
+            mtype=mediainfo.type,
+            tmdbid=mediainfo.tmdb_id,
+            season=season,
+            exist_ok=True,
+            username="豆瓣榜单Plus",
+            save_path=save_path,
+        )
+        logger.info(f"已添加订阅: {mediainfo.title_year}")
+        return Status.SUBSCRIPTION_ADDED
+
+    def __get_rss_info(self, addr) -> List[RssInfo]:
+        """
+        获取RSS
+        """
+        try:
+            if self._proxy:
+                ret = RequestUtils(timeout=240, proxies=settings.PROXY).get_res(addr)
+            else:
+                ret = RequestUtils(timeout=240).get_res(addr)
+            if not ret:
+                return []
+            ret_xml = ret.text
+            ret_array: List[RssInfo] = []
+
+            # 解析XML
+            dom_tree = xml.dom.minidom.parseString(ret_xml)
+            rootNode = dom_tree.documentElement
+            items = rootNode.getElementsByTagName("item")
+            for item in items:
+                try:
+                    # 标题
+                    title = DomUtils.tag_value(item, "title", default="")
+                    # 链接
+                    link = DomUtils.tag_value(item, "link", default="")
+                    # 年份
+                    description = DomUtils.tag_value(item, "description", default="")
+                    # 类型
+                    mtype = DomUtils.tag_value(item, "type", default="")
+
+                    if not title and not link:
+                        logger.warn("条目标题和链接均为空，无法处理")
+                        continue
+
+                    found_doubanid = re.findall(r"/(\d+)/", link)
+
+                    if found_doubanid:
+                        doubanid = found_doubanid[0]
+                        if not str(doubanid).isdigit():
+                            logger.warn(f"解析的豆瓣ID格式不正确：{doubanid}")
+                            continue
+                    else:
+                        doubanid = None
+
+                    # 匹配4位独立数字1900-2099年
+                    found_year = re.findall(r"\b(19\d{2}|20\d{2})\b", description)
+                    year = found_year[0] if found_year else None
+
+                    rss_info: RssInfo = {
+                        "title": title,
+                        "link": link,
+                        "mtype": mtype,
+                        "doubanid": doubanid,
+                        "year": year,
+                    }
+                    # 返回对象
+                    ret_array.append(rss_info)
+
+                except Exception as e1:
+                    logger.error("解析RSS条目失败：" + str(e1))
+                    continue
+            return ret_array
+        except Exception as e:
+            logger.error("获取RSS失败：" + str(e))
+            return []
+
+    @staticmethod
     def __get_addr_save_paths(addr: str) -> Dict[str, Dict[str, str] | str | None]:
         # 提取分号分割的链接和保存地址
         if ";" not in addr:
@@ -612,309 +1172,28 @@ class DoubanRankPlus(_PluginBase):
             }
             return {"addr": addr, "customize_save_paths": customize_save_paths}
 
-    def __refresh_rss(self):
+    @staticmethod
+    def __get_history_unrecognized_payload(
+        title: str,
+        unique: str,
+        year: str | None = None,
+        doubanid: str | None = None,
+    ) -> HistoryPayload:
         """
-        刷新RSS
+        获取历史记录
         """
-        logger.info(f"开始刷新豆瓣榜单Plus ...")
-        addr_list = self._rss_addrs + [
-            self._douban_address.get(rank) for rank in self._ranks
-        ]
-        if not addr_list:
-            logger.info(f"未设置榜单RSS地址")
-            return
-        else:
-            logger.info(f"共 {len(addr_list)} 个榜单RSS地址需要刷新")
-
-        # 读取历史记录
-        if self._clearflag:
-            history = []
-        else:
-            history: List[dict] = self.get_data("history") or []
-
-        for _addr in addr_list:
-            if not _addr:
-                continue
-            try:
-                logger.info(f"获取RSS：{_addr} ...")
-                addr_result = DoubanRankPlus.__get_addr_save_paths(_addr)
-                addr = addr_result.get("addr")
-                customize_save_paths = addr_result.get("customize_save_paths")
-                logger.debug(f"addr::: {addr}")
-                logger.debug(f"customize_save_paths::: {customize_save_paths}")
-
-                rss_infos = self.__get_rss_info(addr)
-                if not rss_infos:
-                    logger.error(f"RSS地址：{addr} ，未查询到数据")
-                    continue
-                else:
-                    logger.info(f"RSS地址：{addr} ，共 {len(rss_infos)} 条数据")
-
-                for rss_info in rss_infos:
-                    if self._event.is_set():
-                        logger.info(f"订阅服务停止")
-                        return
-                    mtype = None
-                    logger.debug(f"rss_info:::{rss_info}")
-                    title = rss_info.get("title")
-                    douban_id = rss_info.get("doubanid")
-                    year = rss_info.get("year")
-                    type_str = rss_info.get("type")
-                    if type_str == "movie":
-                        mtype = MediaType.MOVIE
-                    elif type_str:
-                        mtype = MediaType.TV
-                    unique_flag = f"doubanrankplus: {title} (DB:{douban_id})"
-
-                    if unique_flag in [
-                        h.get("unique") for h in history if h is not None
-                    ]:
-                        continue
-
-                    logger.debug(f"开始处理:::{title} ({year})")
-                    # 元数据
-                    meta = MetaInfo(title)
-                    meta.year = year
-                    if mtype:
-                        meta.type = mtype
-
-                    # 识别媒体信息
-                    # tmdbinfo = None
-                    if douban_id:
-                        # 识别豆瓣信息
-                        logger.debug(
-                            f"开始通过豆瓣ID获取TMDB信息::: douban_id:::{douban_id}, mtype:::{mtype}"
-                        )
-
-                        if settings.RECOGNIZE_SOURCE == "themoviedb":
-                            tmdbinfo = self.mediachain.get_tmdbinfo_by_doubanid(
-                                doubanid=douban_id, mtype=mtype
-                            )
-
-                            if not tmdbinfo:
-                                logger.warn(
-                                    f"未能通过豆瓣ID {douban_id} 获取到TMDB信息，标题：{title}，豆瓣ID：{douban_id}"
-                                )
-                                continue
-
-                            tmdbinfo_media_type = tmdbinfo.get("media_type")
-                            logger.debug(
-                                f'通过豆瓣ID {douban_id} 获取到TMDB信息::: tmdbinfo.id: {tmdbinfo.get("id")}, tmdbinfo.media_type: {tmdbinfo_media_type}'
-                            )
-
-                            if tmdbinfo_media_type:
-                                mtype = tmdbinfo_media_type
-                                meta.type = tmdbinfo_media_type
-
-                            mediainfo = self.chain.recognize_media(
-                                meta=meta,
-                                tmdbid=tmdbinfo.get("id"),
-                                mtype=mtype,
-                            )
-
-                            if not mediainfo:
-                                logger.warn(
-                                    f'TMDBID {tmdbinfo.get("id")} 未识别到媒体信息'
-                                )
-                                continue
-                        else:
-                            mediainfo = self.chain.recognize_media(
-                                meta=meta, doubanid=douban_id
-                            )
-                            if not mediainfo:
-                                logger.warn(f"豆瓣ID {douban_id} 未识别到媒体信息")
-                                continue
-                    else:
-                        # 匹配媒体信息
-                        mediainfo: MediaInfo = self.chain.recognize_media(meta=meta)
-                        if not mediainfo:
-                            logger.warn(
-                                f"未识别到媒体信息，标题：{title}，豆瓣ID：{douban_id}"
-                            )
-                            continue
-
-                    # logger.debug(f"{mediainfo}:::{mediainfo}")
-                    logger.debug(
-                        f"{mediainfo.title_year} mediainfo.type:::{mediainfo.type}"
-                    )
-                    # 保存路径
-                    save_path = None
-                    if customize_save_paths:
-                        if mediainfo.type == MediaType.TV:
-                            save_path = customize_save_paths["tv"]
-                        elif mediainfo.type == MediaType.MOVIE:
-                            save_path = customize_save_paths["movie"]
-
-                    is_added = False
-                    number_of_seasons = mediainfo.number_of_seasons
-                    logger.debug(f"number_of_seasons:::{number_of_seasons}")
-                    # 如果是剧集且开启全季订阅，则轮流下载每一季
-                    if (
-                        self._is_seasons_all
-                        and mediainfo.type == MediaType.TV
-                        and number_of_seasons
-                    ):
-
-                        genre_ids = mediainfo.genre_ids
-                        ANIME_GENRE_ID = 16
-                        logger.debug(f"{mediainfo.title_year} genre_ids::: {genre_ids}")
-                        if ANIME_GENRE_ID in genre_ids and customize_save_paths:
-                            logger.info(
-                                f"{mediainfo.title_year} 为动漫类别, 动漫自定义保存路径为: {customize_save_paths['anime']}"
-                            )
-                            save_path = customize_save_paths["anime"]
-                        # if number_of_seasons > 1:
-                        for i in range(1, number_of_seasons + 1):
-                            logger.debug(
-                                f"开始添加全季订阅:"
-                                f"{mediainfo.title} ({mediainfo.year})"
-                                f" 第{i}/{number_of_seasons}季"
-                            )
-                            is_added = self.__checke_and_add_subscribe(
-                                meta=meta,
-                                mediainfo=mediainfo,
-                                season=i,
-                                save_path=save_path,
-                            )
-                    else:
-                        is_added = self.__checke_and_add_subscribe(
-                            meta=meta,
-                            mediainfo=mediainfo,
-                            season=meta.begin_season,
-                            save_path=save_path,
-                        )
-
-                    # 存储历史记录
-                    if is_added:
-                        history_payload = {
-                            "title": title,
-                            "type": mediainfo.type.value,
-                            "year": mediainfo.year,
-                            "poster": mediainfo.get_poster_image(),
-                            "overview": mediainfo.overview,
-                            "tmdbid": mediainfo.tmdb_id,
-                            "doubanid": douban_id,
-                            "time": datetime.datetime.now().strftime(
-                                "%Y-%m-%d %H:%M:%S"
-                            ),
-                            "unique": unique_flag,
-                        }
-                        logger.info(f"已添加订阅：{history_payload}")
-                        history.append(history_payload)
-
-            except Exception as e:
-                logger.error(str(e))
-
-        # 保存历史记录
-        self.save_data("history", history)
-        # 缓存只清理一次
-        self._clearflag = False
-        logger.info("所有榜单RSS刷新完成")
-
-    def __checke_and_add_subscribe(
-        self,
-        meta,
-        mediainfo,
-        season,
-        save_path,
-    ) -> bool:
-        if save_path:
-            logger.info(f"{mediainfo.title_year} 的自定义保存路径为: {save_path}")
-
-        # 判断上映年份是否符合要求
-        if self._release_year and int(mediainfo.year) < self._release_year:
-            logger.info(
-                f"{mediainfo.title_year} 上映年份: {mediainfo.year}, 不符合要求"
-            )
-            return False
-        # 判断评分是否符合要求
-        if self._vote and mediainfo.vote_average < self._vote:
-            logger.info(
-                f"{mediainfo.title_year} 评分: {mediainfo.vote_average}, 不符合要求"
-            )
-            return False
-
-        # 查询缺失的媒体信息
-        exist_flag, _ = self.downloadchain.get_no_exists_info(
-            meta=meta, mediainfo=mediainfo
-        )
-        if exist_flag:
-            logger.info(f"{mediainfo.title_year} 媒体库中已存在")
-            return False
-
-        # 判断用户是否已经添加订阅
-        if self.subscribechain.exists(mediainfo=mediainfo, meta=meta):
-            logger.info(f"{mediainfo.title_year} 订阅已存在")
-            return False
-
-        # 添加订阅
-        self.subscribechain.add(
-            title=mediainfo.title,
-            year=mediainfo.year,
-            mtype=mediainfo.type,
-            tmdbid=mediainfo.tmdb_id,
-            season=season,
-            exist_ok=True,
-            username="豆瓣榜单Plus",
-            save_path=save_path,
-        )
-        return True
-
-    def __get_rss_info(self, addr) -> List[dict]:
-        """
-        获取RSS
-        """
-        try:
-            if self._proxy:
-                ret = RequestUtils(proxies=settings.PROXY).get_res(addr)
-            else:
-                ret = RequestUtils().get_res(addr)
-            if not ret:
-                return []
-            ret_xml = ret.text
-            ret_array = []
-            # 解析XML
-            dom_tree = xml.dom.minidom.parseString(ret_xml)
-            rootNode = dom_tree.documentElement
-            items = rootNode.getElementsByTagName("item")
-            for item in items:
-                try:
-                    rss_info = {}
-                    # 标题
-                    title = DomUtils.tag_value(item, "title", default="")
-                    # 链接
-                    link = DomUtils.tag_value(item, "link", default="")
-                    # 年份
-                    description = DomUtils.tag_value(item, "description", default="")
-                    # 类型
-                    itemtype = DomUtils.tag_value(item, "type", default="")
-
-                    if not title and not link:
-                        logger.warn("条目标题和链接均为空，无法处理")
-                        continue
-                    rss_info["title"] = title
-                    rss_info["link"] = link
-                    rss_info["type"] = itemtype
-
-                    doubanid = re.findall(r"/(\d+)/", link)
-                    if doubanid:
-                        doubanid = doubanid[0]
-                    if doubanid and not str(doubanid).isdigit():
-                        logger.warn(f"解析的豆瓣ID格式不正确：{doubanid}")
-                        continue
-                    rss_info["doubanid"] = doubanid
-
-                    # 匹配4位独立数字1900-2099年
-                    year = re.findall(r"\b(19\d{2}|20\d{2})\b", description)
-                    if year:
-                        rss_info["year"] = year[0]
-
-                    # 返回对象
-                    ret_array.append(rss_info)
-                except Exception as e1:
-                    logger.error("解析RSS条目失败：" + str(e1))
-                    continue
-            return ret_array
-        except Exception as e:
-            logger.error("获取RSS失败：" + str(e))
-            return []
+        history_payload: HistoryPayload = {
+            "title": title,
+            "unique": unique,
+            "status": Status.UNRECOGNIZED.value,
+            "type": MediaType.UNKNOWN.value,
+            "year": year or "0",
+            "poster": "/assets/no-image-CweBJ8Ee.jpeg",
+            "overview": "",
+            "tmdbid": "0",
+            "doubanid": doubanid or "0",
+            "time": datetime.datetime.now().strftime("%m-%d %H:%M"),
+            "time_full": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "vote": 0.0,
+        }
+        return history_payload
