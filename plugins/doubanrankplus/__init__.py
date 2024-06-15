@@ -14,7 +14,6 @@ from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
-from app.core.context import MediaInfo
 from app.core.metainfo import MetaInfo
 from app.log import logger
 from app.plugins import _PluginBase
@@ -81,9 +80,9 @@ class DoubanRankPlus(_PluginBase):
     _event = Event()
 
     # 私有属性
-    downloadchain: DownloadChain = DownloadChain()
-    subscribechain: SubscribeChain = SubscribeChain()
-    mediachain: MediaChain = MediaChain()
+    downloadchain: DownloadChain = None
+    subscribechain: SubscribeChain = None
+    mediachain: MediaChain = None
 
     _scheduler = None
     _douban_address = {
