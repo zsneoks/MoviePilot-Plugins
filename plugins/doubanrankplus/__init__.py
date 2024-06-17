@@ -26,11 +26,27 @@ from enum import Enum
 
 class Status(Enum):
     UNRECOGNIZED = "未识别"
+    UNCATEGORIZED = "已识别未分类"
     YEAR_NOT_MATCH = "年份不符合"
     RATING_NOT_MATCH = "评分不符合"
     MEDIA_EXISTS = "媒体库已存在"
     SUBSCRIPTION_EXISTS = "订阅已存在"
     SUBSCRIPTION_ADDED = "已添加订阅"
+
+
+class HistoryDataType(Enum):
+    STATISTICS = "历史处理统计"
+    RECOGNIZED = "已识别历史"
+    UNRECOGNIZED = "未识别历史"
+    ALL = "所有历史"
+    LATEST = "最新12条历史"
+
+
+class Icons(Enum):
+    RECOGNIZED = "icon_recognized"
+    STATISTICS = "icon_statistics"
+    UNRECOGNIZED = "icon_unrecognized"
+    RSS = "icon_rss"
 
 
 class HistoryPayload(TypedDict):
@@ -58,13 +74,13 @@ class RssInfo(TypedDict):
 
 class DoubanRankPlus(_PluginBase):
     # 插件名称
-    plugin_name = "豆瓣榜单订阅Plus"
+    plugin_name = "豆瓣榜单Plus"
     # 插件描述
     plugin_desc = "自动订阅豆瓣热门榜单。增加自定义保存路径，全季度订阅，上映年份过滤。"
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.5"
+    plugin_version = "0.0.6"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -80,9 +96,9 @@ class DoubanRankPlus(_PluginBase):
     _event = Event()
 
     # 私有属性
-    downloadchain: DownloadChain = None
-    subscribechain: SubscribeChain = None
-    mediachain: MediaChain = None
+    downloadchain: DownloadChain
+    subscribechain: SubscribeChain
+    mediachain: MediaChain
 
     _scheduler = None
     _douban_address = {
@@ -96,21 +112,22 @@ class DoubanRankPlus(_PluginBase):
         "movie-top250-full": "https://rsshub.app/douban/list/movie_top250",
     }
 
-    _enabled = False
-    _cron = ""
-    _onlyonce = False
-    _rss_addrs: List[str] = []
-    _ranks: List[str] = []
-    _vote = 0.0
-    _clear = False
-    _clearflag = False
-    _clear_unrecognized = False
-    _clearflag_unrecognized = False
-    _proxy = False
-    _is_seasons_all = False
-    _release_year = 0
-    _min_sleep_time = 5
-    _max_sleep_time = 30
+    _enabled: bool
+    _cron: str
+    _onlyonce: bool
+    _rss_addrs: List[str]
+    _ranks: List[str]
+    _vote: float
+    _clear: bool
+    _clearflag: bool
+    _clear_unrecognized: bool
+    _clearflag_unrecognized: bool
+    _proxy: bool
+    _is_seasons_all: bool
+    _release_year: int
+    _min_sleep_time: int
+    _max_sleep_time: int
+    _history_type: str
 
     def init_plugin(self, config: dict[str, Any] | None = None):
         self.downloadchain = DownloadChain()
@@ -118,53 +135,53 @@ class DoubanRankPlus(_PluginBase):
         self.mediachain = MediaChain()
 
         if config:
-            self._enabled = config.get("enabled", self._enabled)
-            self._proxy = config.get("proxy", self._proxy)
-            self._onlyonce = config.get("onlyonce", self._onlyonce)
-            self._is_seasons_all = config.get("is_seasons_all", self._is_seasons_all)
+            self._enabled = config.get("enabled", False)
+            self._proxy = config.get("proxy", False)
+            self._onlyonce = config.get("onlyonce", False)
+            self._is_seasons_all = config.get("is_seasons_all", True)
 
             self._cron = (
-                config.get("cron", "").strip()
-                if config.get("cron", "").strip()
-                else self._cron
+                config.get("cron", "").strip() if config.get("cron", "").strip() else ""
             )
 
             self._release_year = (
                 int(config.get("release_year", "").strip())
                 if config.get("release_year", "").strip()
-                else self._release_year
+                else 0
             )
 
             self._vote = (
                 float(str(config.get("vote", "")).strip())
                 if str(config.get("vote", "")).strip()
-                else self._vote
+                else 0.0
             )
 
-            __sleep_time = config.get("sleep_time", "").strip()
-            if not __sleep_time:
-                logger.debug("未找到 sleep_time 配置项,使用默认值")
-            else:
-                sleep_time_list = re.split("[,，]", __sleep_time)
+            __sleep_time = config.get("sleep_time", "3,10").strip()
+            __sleep_time_list = re.split("[,，]", __sleep_time)
 
-                if len(sleep_time_list) != 2:
-                    logger.warn("休眠时间配置格式不正确,使用默认值")
+            self._min_sleep_time, self._max_sleep_time = 3, 10  # default values
+
+            if len(__sleep_time_list) == 2:
+                __min_sleep_time, __max_sleep_time = map(int, __sleep_time_list)
+                if __max_sleep_time >= __min_sleep_time:
+                    self._min_sleep_time = __min_sleep_time
+                    self._max_sleep_time = __max_sleep_time
                 else:
-                    __min_sleep_time, __max_sleep_time = map(int, sleep_time_list)
-                    if __max_sleep_time < __min_sleep_time:
-                        logger.warn("最大休眠时间小于最小休眠时间,使用默认值")
-                    else:
-                        self._min_sleep_time = __min_sleep_time
-                        self._max_sleep_time = __max_sleep_time
+                    logger.warn("最大休眠时间小于最小休眠时间,使用默认值")
+            else:
+                logger.warn("休眠时间配置格式不正确,使用默认值")
 
             rss_addrs = config.get("rss_addrs")
             if rss_addrs and isinstance(rss_addrs, str):
                 self._rss_addrs = rss_addrs.split("\n")
+            else:
+                self._rss_addrs = []
 
-            self._ranks = config.get("ranks", self._ranks)
-            self._clear = config.get("clear", self._clear)
-            self._clear_unrecognized = config.get(
-                "clear_unrecognized", self._clear_unrecognized
+            self._ranks = config.get("ranks", [])
+            self._clear = config.get("clear", False)
+            self._clear_unrecognized = config.get("clear_unrecognized", False)
+            self._history_type = config.get(
+                "history_type", HistoryDataType.LATEST.value
             )
 
         # 停止现有任务
@@ -174,7 +191,7 @@ class DoubanRankPlus(_PluginBase):
         if self._enabled or self._onlyonce:
             if self._onlyonce:
                 self._scheduler = BackgroundScheduler(timezone=settings.TZ)
-                logger.info("豆瓣榜单订阅Plus服务启动，立即运行一次")
+                logger.info("豆瓣榜单Plus服务启动，立即运行一次")
                 self._scheduler.add_job(
                     func=self.__refresh_rss,
                     trigger="date",
@@ -227,7 +244,7 @@ class DoubanRankPlus(_PluginBase):
                 "path": "/delete_history",
                 "endpoint": self.delete_history,
                 "methods": ["GET"],
-                "summary": "删除豆瓣榜单订阅Plus历史记录",
+                "summary": "删除豆瓣榜单Plus历史记录",
             }
         ]
 
@@ -246,7 +263,7 @@ class DoubanRankPlus(_PluginBase):
             return [
                 {
                     "id": "DoubanRankPlus",
-                    "name": "豆瓣榜单订阅Plus服务",
+                    "name": "豆瓣榜单Plus服务",
                     "trigger": CronTrigger.from_crontab(self._cron),
                     "func": self.__refresh_rss,
                     "kwargs": {},
@@ -256,7 +273,7 @@ class DoubanRankPlus(_PluginBase):
             return [
                 {
                     "id": "DoubanRankPlus",
-                    "name": "豆瓣榜单订阅Plus服务",
+                    "name": "豆瓣榜单Plus服务",
                     "trigger": CronTrigger.from_crontab("0 8 * * *"),
                     "func": self.__refresh_rss,
                     "kwargs": {},
@@ -331,7 +348,7 @@ class DoubanRankPlus(_PluginBase):
                         "content": [
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "props": {"cols": 12, "md": 6},
                                 "content": [
                                     {
                                         "component": "VTextField",
@@ -345,7 +362,26 @@ class DoubanRankPlus(_PluginBase):
                             },
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "sleep_time",
+                                            "label": "随机休眠时间范围",
+                                            "placeholder": "默认: 3,10。减少豆瓣访问频率。格式：最小秒数,最大秒数。",
+                                        },
+                                    }
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
                                 "content": [
                                     {
                                         "component": "VTextField",
@@ -359,7 +395,7 @@ class DoubanRankPlus(_PluginBase):
                             },
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "props": {"cols": 12, "md": 6},
                                 "content": [
                                     {
                                         "component": "VTextField",
@@ -375,22 +411,41 @@ class DoubanRankPlus(_PluginBase):
                     },
                     {
                         "component": "VRow",
+                        "props": {"cols": 12, "md": 6},
                         "content": [
                             {
                                 "component": "VCol",
                                 "content": [
                                     {
-                                        "component": "VTextField",
+                                        "component": "VSelect",
                                         "props": {
-                                            "model": "sleep_time",
-                                            "label": "随机休眠时间范围",
-                                            "placeholder": "默认: 5,30。减少豆瓣访问频率。格式：最小秒数,最大秒数。",
+                                            "model": "history_type",
+                                            "label": "数据面板历史显示",
+                                            "items": [
+                                                {
+                                                    "title": f"{HistoryDataType.LATEST.value}",
+                                                    "value": f"{HistoryDataType.LATEST.value}",
+                                                },
+                                                {
+                                                    "title": f"{HistoryDataType.RECOGNIZED.value}",
+                                                    "value": f"{HistoryDataType.RECOGNIZED.value}",
+                                                },
+                                                {
+                                                    "title": f"{HistoryDataType.UNRECOGNIZED.value}",
+                                                    "value": f"{HistoryDataType.UNRECOGNIZED.value}",
+                                                },
+                                                {
+                                                    "title": f"{HistoryDataType.ALL.value}",
+                                                    "value": f"{HistoryDataType.ALL.value}",
+                                                },
+                                            ],
                                         },
                                     }
                                 ],
                             },
                             {
                                 "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
                                 "content": [
                                     {
                                         "component": "VSelect",
@@ -491,23 +546,348 @@ class DoubanRankPlus(_PluginBase):
                 ],
             }
         ], {
-            "enabled": self._enabled,
-            "cron": self._cron,
-            "proxy": self._proxy,
-            "onlyonce": self._onlyonce,
-            "vote": self._vote,
-            "ranks": self._ranks,
-            "rss_addrs": self._rss_addrs,
-            "clear": self._clear,
-            "clear_unrecognized": self._clear_unrecognized,
-            "release_year": f"{self._release_year}",
-            "sleep_time": f"{self._min_sleep_time},{self._max_sleep_time}",
+            "enabled": False,
+            "cron": "",
+            "proxy": False,
+            "onlyonce": False,
+            "vote": 0.0,
+            "ranks": [],
+            "rss_addrs": [],
+            "clear": False,
+            "clear_unrecognized": False,
+            "release_year": "0",
+            "sleep_time": "3,10",
+            "is_seasons_all": True,
+            "history_type": HistoryDataType.LATEST.value,
         }
+
+    @staticmethod
+    def __get_svg_content(color: str, ds: List[str]):
+        def __get_path_content(fill: str, d: str) -> dict[str, Any]:
+            return {
+                "component": "path",
+                "props": {"fill": fill, "d": d},
+            }
+
+        path_content = [__get_path_content(color, d) for d in ds]
+        component = {
+            "component": "svg",
+            "props": {
+                "class": "icon",
+                "viewBox": "0 0 1024 1024",
+                "width": "40",
+                "height": "40",
+            },
+            "content": path_content,
+        }
+        return component
+
+    @staticmethod
+    def __get_icon_content():
+        color = "#8a8a8a"
+        icon_content = {
+            Icons.RECOGNIZED: DoubanRankPlus.__get_svg_content(
+                color,
+                [
+                    "M512 417.792c-53.248 0-94.208 40.96-94.208 94.208 0 53.248 40.96 94.208 94.208 94.208 53.248 0 94.208-40.96 94.208-94.208 0-53.248-40.96-94.208-94.208-94.208z",
+                    "M512 229.376C245.76 229.376 36.864 475.136 28.672 487.424c-12.288 16.384-12.288 36.864 0 53.248 8.192 12.288 217.088 258.048 483.328 258.048 266.24 0 475.136-245.76 483.328-258.048 12.288-16.384 12.288-36.864 0-53.248-8.192-12.288-217.088-258.048-483.328-258.048z m0 479.232c-106.496 0-196.608-90.112-196.608-196.608 0-110.592 90.112-196.608 196.608-196.608 110.592 0 196.608 90.112 196.608 196.608 0 110.592-86.016 196.608-196.608 196.608zM61.44 741.376c-24.576 0-40.96 16.384-40.96 40.96v180.224c0 24.576 16.384 40.96 40.96 40.96h180.224c24.576 0 40.96-16.384 40.96-40.96s-16.384-40.96-40.96-40.96H102.4v-139.264c0-24.576-16.384-40.96-40.96-40.96zM61.44 282.624c24.576 0 40.96-16.384 40.96-40.96V102.4H245.76c24.576 0 40.96-16.384 40.96-40.96s-16.384-40.96-40.96-40.96H61.44c-24.576 0-40.96 16.384-40.96 40.96V245.76c0 20.48 16.384 36.864 40.96 36.864zM782.336 102.4h139.264v139.264c0 24.576 16.384 40.96 40.96 40.96s40.96-16.384 40.96-40.96V61.44c0-24.576-16.384-40.96-40.96-40.96h-180.224c-24.576 0-40.96 16.384-40.96 40.96s16.384 40.96 40.96 40.96zM962.56 741.376c-24.576 0-40.96 16.384-40.96 40.96v143.36h-139.264c-24.576 0-40.96 16.384-40.96 40.96s16.384 40.96 40.96 40.96h180.224c24.576 0 40.96-16.384 40.96-40.96v-184.32c0-24.576-16.384-40.96-40.96-40.96z",
+                ],
+            ),
+            Icons.STATISTICS: DoubanRankPlus.__get_svg_content(
+                color,
+                [
+                    "M471.04 270.336V20.48c-249.856 20.48-450.56 233.472-450.56 491.52 0 274.432 225.28 491.52 491.52 491.52 118.784 0 229.376-40.96 315.392-114.688L655.36 708.608c-40.96 28.672-94.208 45.056-139.264 45.056-135.168 0-245.76-106.496-245.76-245.76 0-114.688 81.92-217.088 200.704-237.568z",
+                    "M552.96 20.48v249.856C655.36 286.72 737.28 368.64 753.664 471.04h249.856C983.04 233.472 790.528 40.96 552.96 20.48zM712.704 651.264l176.128 176.128c65.536-77.824 106.496-172.032 114.688-274.432h-249.856c-8.192 36.864-20.48 69.632-40.96 98.304z",
+                ],
+            ),
+            Icons.UNRECOGNIZED: DoubanRankPlus.__get_svg_content(
+                color,
+                [
+                    "M241.664 921.6H102.4v-139.264c0-24.576-16.384-40.96-40.96-40.96s-40.96 16.384-40.96 40.96v180.224c0 24.576 16.384 40.96 40.96 40.96h180.224c24.576 0 40.96-16.384 40.96-40.96s-16.384-40.96-40.96-40.96zM245.76 20.48H61.44c-24.576 0-40.96 16.384-40.96 40.96V245.76c0 24.576 16.384 40.96 40.96 40.96s40.96-16.384 40.96-40.96V102.4H245.76c24.576 0 40.96-16.384 40.96-40.96s-20.48-40.96-40.96-40.96zM962.56 20.48h-180.224c-24.576 0-40.96 16.384-40.96 40.96s16.384 40.96 40.96 40.96h139.264v139.264c0 24.576 16.384 40.96 40.96 40.96s40.96-16.384 40.96-40.96V61.44c0-24.576-16.384-40.96-40.96-40.96zM962.56 741.376c-24.576 0-40.96 16.384-40.96 40.96v143.36h-139.264c-24.576 0-40.96 16.384-40.96 40.96s16.384 40.96 40.96 40.96h180.224c24.576 0 40.96-16.384 40.96-40.96v-184.32c0-24.576-16.384-40.96-40.96-40.96zM696.32 401.408c0-102.4-81.92-184.32-184.32-184.32S327.68 299.008 327.68 401.408c0 57.344 24.576 110.592 69.632 143.36l-36.864 204.8c-4.096 12.288 0 28.672 8.192 36.864 8.192 12.288 20.48 16.384 36.864 16.384h212.992c12.288 0 28.672-4.096 36.864-16.384 8.192-12.288 12.288-24.576 8.192-36.864l-36.864-204.8c45.056-28.672 69.632-81.92 69.632-143.36z"
+                ],
+            ),
+            Icons.RSS: DoubanRankPlus.__get_svg_content(
+                color,
+                [
+                    "M320.16155 831.918c0 70.738-57.344 128.082-128.082 128.082S63.99955 902.656 63.99955 831.918s57.344-128.082 128.082-128.082 128.08 57.346 128.08 128.082z m351.32 94.5c-16.708-309.2-264.37-557.174-573.9-573.9C79.31155 351.53 63.99955 366.21 63.99955 384.506v96.138c0 16.83 12.98 30.944 29.774 32.036 223.664 14.568 402.946 193.404 417.544 417.544 1.094 16.794 15.208 29.774 32.036 29.774h96.138c18.298 0.002 32.978-15.31 31.99-33.58z m288.498 0.576C943.19155 459.354 566.92955 80.89 97.00555 64.02 78.94555 63.372 63.99955 77.962 63.99955 96.032v96.136c0 17.25 13.67 31.29 30.906 31.998 382.358 15.678 689.254 322.632 704.93 704.93 0.706 17.236 14.746 30.906 31.998 30.906h96.136c18.068-0.002 32.658-14.948 32.01-33.008z"
+                ],
+            ),
+        }
+        return icon_content
+
+    @staticmethod
+    def __get_historys_statistic_content(
+        title: str, value: str, icon_name: str
+    ) -> dict[str, Any]:
+        icon_content = DoubanRankPlus.__get_icon_content().get(icon_name, "")
+        total_elements = {
+            "component": "VCol",
+            "props": {"cols": 6, "md": 3},
+            "content": [
+                {
+                    "component": "VCard",
+                    "props": {
+                        "variant": "tonal",
+                    },
+                    "content": [
+                        {
+                            "component": "VCardText",
+                            "props": {
+                                "class": "d-flex align-center",
+                            },
+                            "content": [
+                                icon_content,
+                                {
+                                    "component": "div",
+                                    "props": {
+                                        "class": "ml-2",
+                                    },
+                                    "content": [
+                                        {
+                                            "component": "span",
+                                            "props": {"class": "text-caption"},
+                                            "text": f"{title}",
+                                        },
+                                        {
+                                            "component": "div",
+                                            "props": {
+                                                "class": "d-flex align-center flex-wrap"
+                                            },
+                                            "content": [
+                                                {
+                                                    "component": "span",
+                                                    "props": {"class": "text-h6"},
+                                                    "text": f"{value}",
+                                                }
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        }
+                    ],
+                },
+            ],
+        }
+        return total_elements
+
+    def __get_historys_statistics_content(
+        self, historys_total, historys_recognized_total, historys_unrecognized_total
+    ):
+        addr_list = self._rss_addrs + [
+            self._douban_address.get(rank) for rank in self._ranks
+        ]
+
+        # 数据统计
+        data_statistics = [
+            {
+                "title": "历史总计数量",
+                "value": historys_total,
+                "icon_name": Icons.STATISTICS,
+            },
+            {
+                "title": "已识别数量",
+                "value": historys_recognized_total,
+                "icon_name": Icons.RECOGNIZED,
+            },
+            {
+                "title": "未识别数量",
+                "value": historys_unrecognized_total,
+                "icon_name": Icons.UNRECOGNIZED,
+            },
+            {
+                "title": "榜单数量",
+                "value": len(addr_list),
+                "icon_name": Icons.RSS,
+            },
+        ]
+
+        content = list(
+            map(
+                lambda s: DoubanRankPlus.__get_historys_statistic_content(
+                    title=s["title"],
+                    value=s["value"],
+                    icon_name=s["icon_name"],
+                ),
+                data_statistics,
+            )
+        )
+
+        component = {"component": "VRow", "content": content}
+        return component
+
+    def __get_history_post_content(self, history: HistoryPayload):
+        title = history.get("title", "")
+        if len(title) > 8:
+            title = title[:8] + "..."
+        title = title.replace(" ", "")
+
+        year = history.get("year")
+        vote = history.get("vote")
+        poster = history.get("poster")
+        time_str = history.get("time")
+        mtype = history.get("type")
+        doubanid = history.get("doubanid")
+        tmdbid = history.get("tmdbid")
+
+        status = history.get("status")
+        unique = history.get("unique")
+
+        if (
+            tmdbid
+            and tmdbid != "0"
+            and (mtype == MediaType.MOVIE.value or mtype == MediaType.TV.value)
+        ):
+            type_str = "movie" if mtype == MediaType.MOVIE.value else "tv"
+            href = f"https://www.themoviedb.org/{type_str}/{tmdbid}"
+        elif doubanid and doubanid != "0":
+            href = f"https://movie.douban.com/subject/{doubanid}"
+        else:
+            href = "#"
+
+        component = {
+            "component": "VCard",
+            "props": {
+                "variant": "tonal",
+            },
+            "content": [
+                {
+                    "component": "VDialogCloseBtn",
+                    "props": {
+                        "innerClass": "absolute -top-4 right-0 scale-50 opacity-50",
+                    },
+                    "events": {
+                        "click": {
+                            "api": "plugin/DoubanRankPlus/delete_history",
+                            "method": "get",
+                            "params": {
+                                "key": f"{unique}",
+                                "apikey": settings.API_TOKEN,
+                            },
+                        }
+                    },
+                },
+                {
+                    "component": "div",
+                    "props": {
+                        "class": "d-flex justify-space-start flex-nowrap flex-row",
+                    },
+                    "content": [
+                        {
+                            "component": "div",
+                            "content": [
+                                {
+                                    "component": "VImg",
+                                    "props": {
+                                        "src": poster,
+                                        "height": 150,
+                                        "width": 100,
+                                        "aspect-ratio": "2/3",
+                                        "class": "object-cover shadow ring-gray-500",
+                                        "cover": True,
+                                    },
+                                }
+                            ],
+                        },
+                        {
+                            "component": "div",
+                            "content": [
+                                {
+                                    "component": "VCardTitle",
+                                    "props": {
+                                        "class": "py-1 pl-2 pr-4 text-lg whitespace-nowrap"
+                                    },
+                                    "content": [
+                                        {
+                                            "component": "a",
+                                            "props": {
+                                                "href": f"{href}",
+                                                "target": "_blank",
+                                            },
+                                            "text": title,
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCardText",
+                                    "props": {"class": "pa-0 px-2"},
+                                    "text": f"类型: {mtype}",
+                                },
+                                {
+                                    "component": "VCardText",
+                                    "props": {"class": "pa-0 px-2"},
+                                    "text": f"年份: {year}",
+                                },
+                                {
+                                    "component": "VCardText",
+                                    "props": {"class": "pa-0 px-2"},
+                                    "text": f"评分: {vote}",
+                                },
+                                {
+                                    "component": "VCardText",
+                                    "props": {"class": "pa-0 px-2"},
+                                    "text": f"时间: {time_str}",
+                                },
+                                {
+                                    "component": "VCardText",
+                                    "props": {"class": "pa-0 px-2"},
+                                    "text": f"状态: {status}",
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+
+        return component
+
+    def __get_historys_posts_content(self, historys: List[HistoryPayload] | None):
+        posts_content = []
+        if not historys:
+            posts_content = [
+                {
+                    "component": "div",
+                    "text": "暂无数据",
+                    "props": {
+                        "class": "text-start",
+                    },
+                }
+            ]
+        else:
+            for history in historys:
+                posts_content.append(self.__get_history_post_content(history))
+
+        component = {
+            "component": "div",
+            "content": [
+                {
+                    "component": "VCardTitle",
+                    "props": {"class": "pt-6 pb-2 px-0 text-base whitespace-nowrap"},
+                    "content": [
+                        {
+                            "component": "span",
+                            "text": f"{self._history_type}",
+                        }
+                    ],
+                },
+                {
+                    "component": "div",
+                    "props": {
+                        "class": "grid gap-3 grid-info-card p-4",
+                    },
+                    "content": posts_content,
+                },
+            ],
+        }
+
+        return component
 
     def get_page(self) -> List[dict]:
         """
         拼装插件详情页面，需要返回页面配置，同时附带数据
         """
+
         # 查询历史记录
         historys = self.get_data("history")
         if not historys:
@@ -520,139 +900,53 @@ class DoubanRankPlus(_PluginBase):
                     },
                 }
             ]
+
         # 数据按时间降序排序
-        historys = sorted(historys, key=lambda x: x.get("time"), reverse=True)
-        # 拼装页面
-        contents = []
+        historys = sorted(historys, key=lambda x: x.get("time_full"), reverse=True)
+
+        history_recognized = []
+        history_unrecognized = []
+
         for history in historys:
-            title = history.get("title")
-            if len(title) > 8:
-                title = title[:8] + "..."
-            title = title.replace(" ", "")
-            year = history.get("year")
-            vote = history.get("vote")
-            poster = history.get("poster")
-            time_str = history.get("time")
-            mtype = history.get("type")
-            doubanid = history.get("doubanid")
-            tmdbid = history.get("tmdbid")
-
-            status = history.get("status")
-            unique = history.get("unique")
-
-            if (
-                tmdbid
-                and tmdbid != "0"
-                and (mtype == MediaType.MOVIE.value or mtype == MediaType.TV.value)
-            ):
-                type_str = "movie" if mtype == MediaType.MOVIE.value else "tv"
-                href = f"https://www.themoviedb.org/{type_str}/{tmdbid}"
-            elif doubanid and doubanid != "0":
-                href = f"https://movie.douban.com/subject/{doubanid}"
+            if history.get("status") != Status.UNRECOGNIZED.value:
+                history_recognized.append(history)
             else:
-                href = "#"
+                history_unrecognized.append(history)
 
-            contents.append(
-                {
-                    "component": "VCard",
-                    "content": [
-                        {
-                            "component": "VDialogCloseBtn",
-                            "props": {
-                                "innerClass": "absolute top-0 right-0",
-                            },
-                            "events": {
-                                "click": {
-                                    "api": "plugin/DoubanRankPlus/delete_history",
-                                    "method": "get",
-                                    "params": {
-                                        "key": f"{unique}",
-                                        "apikey": settings.API_TOKEN,
-                                    },
-                                }
-                            },
-                        },
-                        {
-                            "component": "div",
-                            "props": {
-                                "class": "d-flex justify-space-start flex-nowrap flex-row",
-                            },
-                            "content": [
-                                {
-                                    "component": "div",
-                                    "content": [
-                                        {
-                                            "component": "VImg",
-                                            "props": {
-                                                "src": poster,
-                                                "height": 150,
-                                                "width": 100,
-                                                "aspect-ratio": "2/3",
-                                                "class": "object-cover shadow ring-gray-500",
-                                                "cover": True,
-                                            },
-                                        }
-                                    ],
-                                },
-                                {
-                                    "component": "div",
-                                    "content": [
-                                        {
-                                            "component": "VCardTitle",
-                                            "props": {
-                                                "class": "py-1 pl-2 pr-4 text-lg whitespace-nowrap"
-                                            },
-                                            "content": [
-                                                {
-                                                    "component": "a",
-                                                    "props": {
-                                                        "href": f"{href}",
-                                                        "target": "_blank",
-                                                    },
-                                                    "text": title,
-                                                }
-                                            ],
-                                        },
-                                        {
-                                            "component": "VCardText",
-                                            "props": {"class": "pa-0 px-2"},
-                                            "text": f"类型: {mtype}",
-                                        },
-                                        {
-                                            "component": "VCardText",
-                                            "props": {"class": "pa-0 px-2"},
-                                            "text": f"年份: {year}",
-                                        },
-                                        {
-                                            "component": "VCardText",
-                                            "props": {"class": "pa-0 px-2"},
-                                            "text": f"评分: {vote}",
-                                        },
-                                        {
-                                            "component": "VCardText",
-                                            "props": {"class": "pa-0 px-2"},
-                                            "text": f"时间: {time_str}",
-                                        },
-                                        {
-                                            "component": "VCardText",
-                                            "props": {"class": "pa-0 px-2"},
-                                            "text": f"状态: {status}",
-                                        },
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                }
-            )
+        history_recognized = sorted(
+            history_recognized, key=lambda x: x.get("time_full"), reverse=True
+        )
+        history_unrecognized = sorted(
+            history_unrecognized, key=lambda x: x.get("time_full"), reverse=True
+        )
 
+        historys_total = len(historys)
+        historys_recognized_total = len(history_recognized)
+        historys_unrecognized_total = len(history_unrecognized)
+
+        historys_in_type: list[HistoryPayload] | None = None
+        if self._history_type == HistoryDataType.LATEST.value:
+            historys_in_type = historys[:12]
+        elif self._history_type == HistoryDataType.RECOGNIZED.value:
+            historys_in_type = history_recognized
+        elif self._history_type == HistoryDataType.UNRECOGNIZED.value:
+            historys_in_type = history_unrecognized
+        elif self._history_type == HistoryDataType.ALL.value:
+            historys_in_type = historys
+
+        historys_posts_content = self.__get_historys_posts_content(historys_in_type)
+        historys_statistics_content = self.__get_historys_statistics_content(
+            historys_total, historys_recognized_total, historys_unrecognized_total
+        )
+
+        # 拼装页面
         return [
             {
                 "component": "div",
-                "props": {
-                    "class": "grid gap-3 grid-info-card",
-                },
-                "content": contents,
+                "content": [
+                    historys_statistics_content,
+                    historys_posts_content,
+                ],
             }
         ]
 
@@ -703,6 +997,7 @@ class DoubanRankPlus(_PluginBase):
             "is_seasons_all": self._is_seasons_all,
             "release_year": str(self._release_year),
             "sleep_time": f"{self._min_sleep_time},{self._max_sleep_time}",
+            "history_type": self._history_type,
         }
         logger.debug(f"更新配置 {__config}")
         self.update_config(__config)
@@ -743,12 +1038,14 @@ class DoubanRankPlus(_PluginBase):
                     f"已清理 {deleted_count} 条 {self.plugin_name} 未识别的历史记录"
                 )
 
-        addr_index = 0
-        for _addr in addr_list:
+        # 初始化豆瓣IP限制判断
+        douban_last_ip_rate_limit_datetime = None
+        douban_ip_rate_limit_times = 0
+
+        for addr_index, _addr in enumerate(addr_list):
             if not _addr:
                 continue
             try:
-                addr_index = addr_index + 1
                 logger.info(f"获取RSS：{_addr} ...")
                 addr_result = DoubanRankPlus.__get_addr_save_paths(_addr)
                 addr = addr_result.get("addr")
@@ -763,16 +1060,14 @@ class DoubanRankPlus(_PluginBase):
                 else:
                     logger.info(f"RSS地址：{addr} ，共 {len(rss_infos)} 条数据")
 
-                rss_info_index = 0
-                for rss_info in rss_infos:
+                for rss_info_index, rss_info in enumerate(rss_infos):
                     if self._event.is_set():
                         logger.info("订阅服务停止")
                         return
-                    rss_info_index = rss_info_index + 1
                     mtype = None
 
                     logger.info(
-                        f"第 {addr_index}/{len(addr_list)} 条订阅数据处理进度: {rss_info_index}/{len(rss_infos)}"
+                        f"第 {addr_index + 1}/{len(addr_list)} 条订阅数据处理进度: {rss_info_index + 1}/{len(rss_infos)}"
                     )
 
                     logger.debug(f"rss_info:::{rss_info}")
@@ -805,37 +1100,49 @@ class DoubanRankPlus(_PluginBase):
                     meta.year = year
                     if mtype:
                         meta.type = mtype
-                    logger.debug(f"meta:::{meta}")
+                    logger.debug(f"meta from MetaInfo:::{meta}")
+
+                    # 豆瓣IP限制判断
+                    if douban_last_ip_rate_limit_datetime:
+                        if (
+                            datetime.datetime.now(tz=pytz.timezone(settings.TZ))
+                            - douban_last_ip_rate_limit_datetime
+                        ).seconds > 4200:
+                            # 超过70分钟，重置
+                            logger.info(
+                                f"解除豆瓣IP限制, 上次触发时间为: {douban_last_ip_rate_limit_datetime}, 已触发次数: {douban_ip_rate_limit_times}"
+                            )
+                            douban_last_ip_rate_limit_datetime = None
 
                     # 识别媒体信息
-                    if douban_id:
+                    if douban_id and not douban_last_ip_rate_limit_datetime:
                         # 随机休眠
                         random_sleep_time = round(
                             random.uniform(self._min_sleep_time, self._max_sleep_time),
                             1,
                         )
-                        logger.debug(
-                            f"随机休眠范围::: {self._min_sleep_time},{self._max_sleep_time}"
-                        )
+
                         if random_sleep_time:
                             logger.info(
-                                f"随机休眠 {random_sleep_time} 秒, 避免访问豆瓣频繁过快导致无法获取数据"
+                                f"随机休眠范围: {self._min_sleep_time},{self._max_sleep_time}, 此次休眠时间: {random_sleep_time} 秒"
                             )
                             time.sleep(random_sleep_time)
 
                         # 识别豆瓣信息
                         if settings.RECOGNIZE_SOURCE == "themoviedb":
-                            logger.debug(
-                                f"开始通过豆瓣ID {douban_id} 获取 {title} 的TMDB信息, mtype:::{mtype}"
+                            logger.info(
+                                f"开始通过豆瓣ID {douban_id} 获取 {title} 的TMDB信息, 类型: {meta.type}"
                             )
 
-                            tmdbinfo = self.mediachain.get_tmdbinfo_by_doubanid(
-                                doubanid=douban_id, mtype=mtype
+                            is_ip_rate_limit, tmdbinfo = (
+                                self.__get_tmdbinfo_by_doubanid(
+                                    doubanid=douban_id, mtype=meta.type
+                                )
                             )
 
-                            if not tmdbinfo:
+                            if not tmdbinfo and not is_ip_rate_limit:
                                 logger.warn(
-                                    f"未能通过豆瓣ID: {douban_id} 未识别到 {title} 的TMDB信息"
+                                    f"未识别到 {title} 的TMDB信息, 豆瓣ID: {douban_id} "
                                 )
                                 # 存储历史记录
                                 history_payload = (
@@ -850,41 +1157,78 @@ class DoubanRankPlus(_PluginBase):
                                 # self.save_data("history", history)
                                 # logger.debug(f"已添加历史：{history_payload}")
                                 continue
-
-                            tmdbinfo_media_type = tmdbinfo.get("media_type", None)
-                            tmdb_id = tmdbinfo.get("id", None)
-
-                            logger.info(
-                                f"通过豆瓣ID: {douban_id} 识别到 {title} 的TMDB信息: TMDBID: {tmdb_id}, TMDBID Media Type: {tmdbinfo_media_type}"
-                            )
-
-                            if tmdbinfo_media_type:
-                                mtype = tmdbinfo_media_type
-                                meta.type = tmdbinfo_media_type
-
-                            mediainfo = self.chain.recognize_media(
-                                meta=meta,
-                                tmdbid=tmdb_id,
-                            )
-
-                            if not mediainfo:
-                                logger.warn(
-                                    f"{title} 的TMDBID: {tmdb_id} 未识别到媒体信息"
+                            elif is_ip_rate_limit:
+                                douban_ip_rate_limit_times = (
+                                    douban_ip_rate_limit_times + 1
                                 )
-                                # 存储历史记录
-                                history_payload = (
-                                    DoubanRankPlus.__get_history_unrecognized_payload(
+
+                                logger.warn(
+                                    f"未从豆瓣获取到数据, 可能触发豆瓣IP速率限制, 接下来70分钟时间内切换媒体识别。 上一次触发时间为: {douban_last_ip_rate_limit_datetime}, 已触发次数: {douban_ip_rate_limit_times}"
+                                )
+
+                                douban_last_ip_rate_limit_datetime = (
+                                    datetime.datetime.now(tz=pytz.timezone(settings.TZ))
+                                )
+
+                                logger.info(
+                                    f"豆瓣IP已受限制, 切换通过 meta 识别 {title} 的媒体信息, 类型: {meta.type}"
+                                )
+                                logger.debug(
+                                    f"douban_last_ip_rate_limit_datetime:::{douban_last_ip_rate_limit_datetime}"
+                                )
+
+                                mediainfo = self.chain.recognize_media(
+                                    meta=meta,
+                                )
+                                if not mediainfo:
+                                    logger.warn(
+                                        f"未识别到 {title} 的媒体信息, 豆瓣ID {douban_id}"
+                                    )
+                                    # 存储历史记录
+                                    history_payload = DoubanRankPlus.__get_history_unrecognized_payload(
+                                        title, unique_flag, year
+                                    )
+                                    history.append(history_payload)
+                                    # self.save_data("history", history)
+                                    # logger.debug(f"已添加历史：{history_payload}")
+                                    continue
+                            else:
+                                tmdbinfo_media_type = tmdbinfo.get("media_type", None)
+                                tmdb_id = tmdbinfo.get("id", None)
+
+                                logger.debug(
+                                    f"从豆瓣ID {douban_id} 获得TMDB信息: TMDBID: {tmdb_id}, TMDBID Media Type: {tmdbinfo_media_type}"
+                                )
+
+                                if tmdbinfo_media_type:
+                                    mtype = tmdbinfo_media_type
+                                    meta.type = tmdbinfo_media_type
+
+                                logger.info(
+                                    f"继续通过TMDBID {tmdb_id} 识别 {title} 的媒体信息, 类型: {meta.type}"
+                                )
+                                mediainfo = self.chain.recognize_media(
+                                    meta=meta,
+                                    tmdbid=tmdb_id,
+                                    mtype=meta.type,  # 直接使用类型查询tmdb详情
+                                )
+
+                                if not mediainfo:
+                                    logger.warn(
+                                        f"未识别到 {title} 的媒体信息, TMDBID: {tmdb_id} "
+                                    )
+                                    # 存储历史记录
+                                    history_payload = DoubanRankPlus.__get_history_unrecognized_payload(
                                         title, unique_flag, year, douban_id
                                     )
-                                )
-                                history.append(history_payload)
-                                # self.save_data("history", history)
-                                # logger.debug(f"已添加历史：{history_payload}")
-                                continue
+                                    history.append(history_payload)
+                                    # self.save_data("history", history)
+                                    # logger.debug(f"已添加历史：{history_payload}")
+                                    continue
 
                         else:
-                            logger.debug(
-                                f"开始通过豆瓣ID: {douban_id} 识别 {title} 的媒体信息"
+                            logger.info(
+                                f"开始通过豆瓣ID {douban_id} 识别 {title} 的媒体信息, 类型: {meta.type}"
                             )
                             mediainfo = self.chain.recognize_media(
                                 meta=meta,
@@ -907,7 +1251,14 @@ class DoubanRankPlus(_PluginBase):
 
                     else:
                         # 识别媒体信息
-                        logger.debug(f"开始识别 {title} 的媒体信息")
+                        if douban_last_ip_rate_limit_datetime:
+                            logger.info(
+                                f"豆瓣IP已受限制, 切换通过 meta 识别 {title} 的媒体信息, 类型: {meta.type}"
+                            )
+                        else:
+                            logger.info(
+                                f"开始通过 meta 识别 {title} 的媒体信息, 类型: {meta.type}"
+                            )
                         mediainfo = self.chain.recognize_media(
                             meta=meta,
                         )
@@ -927,8 +1278,9 @@ class DoubanRankPlus(_PluginBase):
                             continue
 
                     # logger.debug(f"{mediainfo}:::{mediainfo}")
-                    logger.debug(
-                        f"已识别到 {mediainfo.title_year} 的媒体类型: {mediainfo.type}"
+                    logger.debug(f"{meta}:::{meta}")
+                    logger.info(
+                        f"已识别到 {title} ({year}) 的媒体信息: {mediainfo.title_year}, 类型: {mediainfo.type}"
                     )
                     # 保存路径
                     save_path = None
@@ -938,16 +1290,19 @@ class DoubanRankPlus(_PluginBase):
                         elif mediainfo.type == MediaType.MOVIE:
                             save_path = customize_save_paths["movie"]
 
-                    status = "未知"
                     number_of_seasons = mediainfo.number_of_seasons
                     logger.debug(f"number_of_seasons:::{number_of_seasons}")
+
+                    # 已识别状态默认值
+                    status = Status.UNCATEGORIZED
+
                     # 如果是剧集且开启全季订阅，则轮流下载每一季
                     if (
                         self._is_seasons_all
                         and mediainfo.type == MediaType.TV
                         and number_of_seasons
                     ):
-
+                        logger.debug(f"meta.begin_season:::{meta.begin_season}")
                         genre_ids = mediainfo.genre_ids
                         ANIME_GENRE_ID = 16
                         logger.debug(f"{mediainfo.title_year} genre_ids::: {genre_ids}")
@@ -961,12 +1316,14 @@ class DoubanRankPlus(_PluginBase):
                             logger.debug(
                                 f"开始添加 {mediainfo.title_year} 第{i}/{number_of_seasons}季订阅"
                             )
-                            status = self.__checke_and_add_subscribe(
+                            __status = self.__checke_and_add_subscribe(
                                 meta=meta,
                                 mediainfo=mediainfo,
                                 season=i,
                                 save_path=save_path,
                             )
+                            if not meta.begin_season or i == meta.begin_season:
+                                status = __status
                     else:
                         status = self.__checke_and_add_subscribe(
                             meta=meta,
@@ -985,10 +1342,12 @@ class DoubanRankPlus(_PluginBase):
                         "tmdbid": str(mediainfo.tmdb_id) or "0",
                         "doubanid": douban_id or "0",
                         "unique": unique_flag,
-                        "time": datetime.datetime.now().strftime("%m-%d %H:%M"),
-                        "time_full": datetime.datetime.now().strftime(
-                            "%Y-%m-%d %H:%M:%S"
-                        ),
+                        "time": datetime.datetime.now(
+                            tz=pytz.timezone(settings.TZ)
+                        ).strftime("%m-%d %H:%M"),
+                        "time_full": datetime.datetime.now(
+                            tz=pytz.timezone(settings.TZ)
+                        ).strftime("%Y-%m-%d %H:%M:%S"),
                         "vote": mediainfo.vote_average,
                         "status": status.value,
                     }
@@ -997,7 +1356,7 @@ class DoubanRankPlus(_PluginBase):
                     # logger.debug(f"已添加历史：{history_payload}")
 
             except Exception as e:
-                logger.error(str(e))
+                logger.error(f"处理RSS地址：{addr} 出错: {str(e)}")
             finally:
                 # 保存历史记录
                 logger.debug(f"保存榜单 {addr} 处理后的历史记录")
@@ -1049,7 +1408,7 @@ class DoubanRankPlus(_PluginBase):
             tmdbid=mediainfo.tmdb_id,
             season=season,
             exist_ok=True,
-            username="豆瓣榜单Plus",
+            username=self.plugin_name,
             save_path=save_path,
         )
         logger.info(f"已添加订阅: {mediainfo.title_year}")
@@ -1191,8 +1550,68 @@ class DoubanRankPlus(_PluginBase):
             "overview": "",
             "tmdbid": "0",
             "doubanid": doubanid or "0",
-            "time": datetime.datetime.now().strftime("%m-%d %H:%M"),
-            "time_full": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "time": datetime.datetime.now(tz=pytz.timezone(settings.TZ)).strftime(
+                "%m-%d %H:%M"
+            ),
+            "time_full": datetime.datetime.now(tz=pytz.timezone(settings.TZ)).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
             "vote": 0.0,
         }
         return history_payload
+
+    def __get_tmdbinfo_by_doubanid(
+        self, doubanid: str, mtype: MediaType | None = None
+    ) -> Tuple[bool, dict[str, Any] | None]:
+        """
+        根据豆瓣ID获取TMDB信息
+        """
+        tmdbinfo = None
+        is_ip_rate_limit = False
+        doubaninfo = self.mediachain.douban_info(doubanid=doubanid, mtype=mtype)
+        if doubaninfo:
+            # 优先使用原标题匹配
+            if doubaninfo.get("original_title"):
+                meta = MetaInfo(title=doubaninfo.get("title", ""))
+                meta_org = MetaInfo(title=doubaninfo.get("original_title", ""))
+            else:
+                meta_org = meta = MetaInfo(title=doubaninfo.get("title", ""))
+            # 年份
+            if doubaninfo.get("year"):
+                meta.year = doubaninfo.get("year")
+
+            # 处理类型
+            if isinstance(doubaninfo.get("media_type"), MediaType):
+                meta.type = doubaninfo.get("media_type", None)
+            else:
+                meta.type = (
+                    MediaType.MOVIE
+                    if doubaninfo.get("type") == "movie"
+                    else MediaType.TV
+                )
+            # 匹配TMDB信息
+            meta_names = list(
+                dict.fromkeys(
+                    [k for k in [meta_org.name, meta.cn_name, meta.en_name] if k]
+                )
+            )
+
+            if mtype and mtype != MediaType.UNKNOWN:
+                __mtype = mtype
+            else:
+                __mtype = meta.type
+
+            for name in meta_names:
+                tmdbinfo = self.mediachain.match_tmdbinfo(
+                    name=name,
+                    year=meta.year,
+                    mtype=__mtype,
+                    season=meta.begin_season,
+                )
+                if tmdbinfo:
+                    # 合季季后返回
+                    tmdbinfo["season"] = meta.begin_season
+                    break
+        else:
+            is_ip_rate_limit = True
+        return is_ip_rate_limit, tmdbinfo
