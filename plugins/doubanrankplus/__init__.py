@@ -80,7 +80,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.6"
+    plugin_version = "0.0.7"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -96,9 +96,9 @@ class DoubanRankPlus(_PluginBase):
     _event = Event()
 
     # 私有属性
-    downloadchain: DownloadChain
-    subscribechain: SubscribeChain
-    mediachain: MediaChain
+    downloadchain: DownloadChain = None
+    subscribechain: SubscribeChain = None
+    mediachain: MediaChain = None
 
     _scheduler = None
     _douban_address = {
@@ -112,22 +112,22 @@ class DoubanRankPlus(_PluginBase):
         "movie-top250-full": "https://rsshub.app/douban/list/movie_top250",
     }
 
-    _enabled: bool
-    _cron: str
-    _onlyonce: bool
-    _rss_addrs: List[str]
-    _ranks: List[str]
-    _vote: float
-    _clear: bool
-    _clearflag: bool
-    _clear_unrecognized: bool
-    _clearflag_unrecognized: bool
-    _proxy: bool
-    _is_seasons_all: bool
-    _release_year: int
-    _min_sleep_time: int
-    _max_sleep_time: int
-    _history_type: str
+    _enabled: bool = False
+    _cron: str = ""
+    _onlyonce: bool = False
+    _rss_addrs: List[str] = []
+    _ranks: List[str] = []
+    _vote: float = 0.0
+    _clear: bool = False
+    _clearflag: bool = False
+    _clear_unrecognized: bool = False
+    _clearflag_unrecognized: bool = False
+    _proxy: bool = False
+    _is_seasons_all: bool = True
+    _release_year: int = 0
+    _min_sleep_time: int = 3
+    _max_sleep_time: int = 10
+    _history_type: str = HistoryDataType.LATEST.value
 
     def init_plugin(self, config: dict[str, Any] | None = None):
         self.downloadchain = DownloadChain()
@@ -1094,6 +1094,9 @@ class DoubanRankPlus(_PluginBase):
                         h.get("unique") for h in history if h is not None
                     ]:
                         logger.debug(f"已处理过：{unique_flag}")
+                        logger.info(
+                            f"已处理过: Title: {title}, Year:{year}, DBID:{douban_id}"
+                        )
                         continue
 
                     logger.debug(f"开始处理:::{title} ({year})")
