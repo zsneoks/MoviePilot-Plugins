@@ -80,7 +80,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.9"
+    plugin_version = "0.0.10"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -1059,6 +1059,9 @@ class DoubanRankPlus(_PluginBase):
                     f"已清理 {deleted_count} 条 {self.plugin_name} 未识别的历史记录"
                 )
 
+        # 提取 history 中的 unique 值到一个集合中
+        unique_flags = {h.get("unique") for h in history if h is not None}
+
         # 初始化豆瓣IP限制判断
         douban_last_ip_rate_limit_datetime = None
         douban_ip_rate_limit_times = 0
@@ -1110,9 +1113,8 @@ class DoubanRankPlus(_PluginBase):
                     )
                     logger.debug(f"unique_flag:::{unique_flag}")
 
-                    if unique_flag in [
-                        h.get("unique") for h in history if h is not None
-                    ]:
+                    # 在集合中查找 unique_flag
+                    if unique_flag in unique_flags:
                         logger.info(
                             f"已处理过: Title: {title}, Year:{year}, DBID:{douban_id}"
                         )
@@ -1181,7 +1183,7 @@ class DoubanRankPlus(_PluginBase):
                                 )
                                 history.append(history_payload)
                                 # self.save_data("history", history)
-                                # logger.debug(f"已添加历史：{history_payload}")
+                                logger.debug(f"已添加到历史：{history_payload}")
                                 continue
                             elif is_ip_rate_limit:
                                 logger.warn(
@@ -1223,7 +1225,7 @@ class DoubanRankPlus(_PluginBase):
                                     )
                                     history.append(history_payload)
                                     # self.save_data("history", history)
-                                    # logger.debug(f"已添加历史：{history_payload}")
+                                    logger.debug(f"已添加到历史：{history_payload}")
                                     continue
                             else:
                                 tmdbinfo_media_type = tmdbinfo.get("media_type", None)
@@ -1256,7 +1258,7 @@ class DoubanRankPlus(_PluginBase):
                                     )
                                     history.append(history_payload)
                                     # self.save_data("history", history)
-                                    # logger.debug(f"已添加历史：{history_payload}")
+                                    logger.debug(f"已添加到历史：{history_payload}")
                                     continue
 
                         else:
@@ -1279,7 +1281,7 @@ class DoubanRankPlus(_PluginBase):
                                 )
                                 history.append(history_payload)
                                 # self.save_data("history", history)
-                                # logger.debug(f"已添加历史：{history_payload}")
+                                logger.debug(f"已添加到历史：{history_payload}")
                                 continue
 
                     else:
@@ -1307,7 +1309,7 @@ class DoubanRankPlus(_PluginBase):
                             )
                             history.append(history_payload)
                             # self.save_data("history", history)
-                            # logger.debug(f"已添加历史：{history_payload}")
+                            logger.debug(f"已添加到历史：{history_payload}")
                             continue
 
                     # logger.debug(f"{mediainfo}:::{mediainfo}")
@@ -1385,14 +1387,15 @@ class DoubanRankPlus(_PluginBase):
                         "status": status.value,
                     }
                     history.append(history_payload)
+                    logger.debug(f"已添加到历史：{history_payload}")
                     # self.save_data("history", history)
-                    # logger.debug(f"已添加历史：{history_payload}")
 
             except Exception as e:
                 logger.error(f"处理RSS地址：{addr} 出错: {str(e)}")
             finally:
                 # 保存历史记录
-                logger.debug(f"保存榜单 {addr} 处理后的历史记录")
+                logger.info(f"保存榜单 {addr} 处理后的历史记录")
+
                 self.save_data("history", history)
 
         logger.info("所有榜单RSS刷新完成")
@@ -1471,17 +1474,12 @@ class DoubanRankPlus(_PluginBase):
                     title = DomUtils.tag_value(item, "title", default="")
                     # 链接
                     link = DomUtils.tag_value(item, "link", default="")
-                    # 年份
-                    description = DomUtils.tag_value(item, "description", default="")
-                    # 类型
-                    mtype = DomUtils.tag_value(item, "type", default="")
-
                     if not title and not link:
                         logger.warn("条目标题和链接均为空，无法处理")
                         continue
 
+                    # 豆瓣ID
                     found_doubanid = re.findall(r"/(\d+)/", link)
-
                     if found_doubanid:
                         doubanid = found_doubanid[0]
                         if not str(doubanid).isdigit():
@@ -1490,16 +1488,30 @@ class DoubanRankPlus(_PluginBase):
                     else:
                         doubanid = None
 
-                    # 匹配4位独立数字1900-2099年
-                    found_year = re.findall(r"\b(19\d{2}|20\d{2})\b", description)
-                    year = found_year[0] if found_year else None
+                    # 年份
+                    year = DomUtils.tag_value(item, "year", default="")
+                    if not year:
+                        # 年份
+                        description = DomUtils.tag_value(
+                            item, "description", default=""
+                        )
+                        # 删除 '评价数' 到第一个 '<br>' 之间的字符串
+                        description = re.sub(r"评价数.*?<br>", "", description)
+                        # 删除所有 <img> 标签及其内容
+                        description = re.sub(r"<img.*?>", "", description)
+                        # 匹配4位独立数字1900-2099年
+                        found_year = re.findall(r"\b(19\d{2}|20\d{2})\b", description)
+                        year = found_year[0] if found_year else None
+
+                    # 类型
+                    mtype = DomUtils.tag_value(item, "type", default="")
 
                     rss_info: RssInfo = {
                         "title": title,
                         "link": link,
                         "mtype": mtype,
-                        "doubanid": doubanid,
                         "year": year,
+                        "doubanid": doubanid,
                     }
                     # 返回对象
                     ret_array.append(rss_info)
