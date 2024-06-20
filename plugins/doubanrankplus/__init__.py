@@ -80,7 +80,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.8"
+    plugin_version = "0.0.9"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -1099,7 +1099,7 @@ class DoubanRankPlus(_PluginBase):
 
                     douban_id = rss_info.get("doubanid")
                     year = rss_info.get("year")
-                    type_str = rss_info.get("type")
+                    type_str = rss_info.get("mtype")
 
                     if type_str == "movie":
                         mtype = MediaType.MOVIE
@@ -1108,17 +1108,19 @@ class DoubanRankPlus(_PluginBase):
                     unique_flag = (
                         f"{self.plugin_config_prefix}{title}_{year}_(DB:{douban_id})"
                     )
+                    logger.debug(f"unique_flag:::{unique_flag}")
 
                     if unique_flag in [
                         h.get("unique") for h in history if h is not None
                     ]:
-                        # logger.debug(f"已处理过：{unique_flag}")
                         logger.info(
                             f"已处理过: Title: {title}, Year:{year}, DBID:{douban_id}"
                         )
                         continue
 
-                    logger.debug(f"开始处理:::{title} ({year})")
+                    logger.info(
+                        f"开始处理: Title: {title}, Year:{year}, DBID:{douban_id}, Type:{mtype}"
+                    )
                     # 元数据
                     meta = MetaInfo(title)
                     meta.year = year
