@@ -8,6 +8,7 @@ import random
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from enum import Enum
 
 from app import schemas
 from app.chain.download import DownloadChain
@@ -20,8 +21,7 @@ from app.plugins import _PluginBase
 from app.schemas import MediaType
 from app.utils.dom import DomUtils
 from app.utils.http import RequestUtils
-
-from enum import Enum
+from app.modules.douban.apiv2 import DoubanApi
 
 
 class Status(Enum):
@@ -80,7 +80,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.7"
+    plugin_version = "0.0.8"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -99,6 +99,7 @@ class DoubanRankPlus(_PluginBase):
     downloadchain: DownloadChain = None
     subscribechain: SubscribeChain = None
     mediachain: MediaChain = None
+    doubanapi: DoubanApi = None
 
     _scheduler = None
     _douban_address = {
@@ -128,11 +129,13 @@ class DoubanRankPlus(_PluginBase):
     _min_sleep_time: int = 3
     _max_sleep_time: int = 10
     _history_type: str = HistoryDataType.LATEST.value
+    _is_exit_ip_rate_limit: bool = False
 
     def init_plugin(self, config: dict[str, Any] | None = None):
         self.downloadchain = DownloadChain()
         self.subscribechain = SubscribeChain()
         self.mediachain = MediaChain()
+        self.doubanapi = DoubanApi()
 
         if config:
             self._enabled = config.get("enabled", False)
@@ -183,6 +186,7 @@ class DoubanRankPlus(_PluginBase):
             self._history_type = config.get(
                 "history_type", HistoryDataType.LATEST.value
             )
+            self._is_exit_ip_rate_limit = config.get("is_exit_ip_rate_limit", False)
 
         # 停止现有任务
         self.stop_service()
@@ -337,6 +341,19 @@ class DoubanRankPlus(_PluginBase):
                                         "props": {
                                             "model": "is_seasons_all",
                                             "label": "订阅剧集全季度",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 4},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "is_exit_ip_rate_limit",
+                                            "label": "未能从豆瓣获取数据时结束",
                                         },
                                     }
                                 ],
@@ -559,6 +576,7 @@ class DoubanRankPlus(_PluginBase):
             "sleep_time": "3,10",
             "is_seasons_all": True,
             "history_type": HistoryDataType.LATEST.value,
+            "is_exit_ip_rate_limit": False,
         }
 
     @staticmethod
@@ -1000,6 +1018,7 @@ class DoubanRankPlus(_PluginBase):
             "release_year": str(self._release_year),
             "sleep_time": f"{self._min_sleep_time},{self._max_sleep_time}",
             "history_type": self._history_type,
+            "is_exit_ip_rate_limit": self._is_exit_ip_rate_limit,
         }
         logger.debug(f"更新配置 {__config}")
         self.update_config(__config)
@@ -1093,7 +1112,7 @@ class DoubanRankPlus(_PluginBase):
                     if unique_flag in [
                         h.get("unique") for h in history if h is not None
                     ]:
-                        logger.debug(f"已处理过：{unique_flag}")
+                        # logger.debug(f"已处理过：{unique_flag}")
                         logger.info(
                             f"已处理过: Title: {title}, Year:{year}, DBID:{douban_id}"
                         )
@@ -1139,7 +1158,7 @@ class DoubanRankPlus(_PluginBase):
                                 f"开始通过豆瓣ID {douban_id} 获取 {title} 的TMDB信息, 类型: {meta.type}"
                             )
 
-                            is_ip_rate_limit, tmdbinfo = (
+                            tmdbinfo, is_ip_rate_limit = (
                                 self.__get_tmdbinfo_by_doubanid(
                                     doubanid=douban_id, mtype=meta.type
                                 )
@@ -1163,12 +1182,19 @@ class DoubanRankPlus(_PluginBase):
                                 # logger.debug(f"已添加历史：{history_payload}")
                                 continue
                             elif is_ip_rate_limit:
+                                logger.warn(
+                                    f"未能从豆瓣获取数据, 触发豆瓣IP速率限制, 豆瓣ID: {douban_id}"
+                                )
+                                if self._is_exit_ip_rate_limit:
+                                    logger.info("结束处理")
+                                    return
+
                                 douban_ip_rate_limit_times = (
                                     douban_ip_rate_limit_times + 1
                                 )
 
                                 logger.warn(
-                                    f"未从豆瓣获取到数据, 可能触发豆瓣IP速率限制, 接下来70分钟时间内切换媒体识别。 上一次触发时间为: {douban_last_ip_rate_limit_datetime}, 已触发次数: {douban_ip_rate_limit_times}"
+                                    f"70分钟时间内切换媒体识别。 上一次触发时间为: {douban_last_ip_rate_limit_datetime}, 已触发次数: {douban_ip_rate_limit_times}"
                                 )
 
                                 douban_last_ip_rate_limit_datetime = (
@@ -1176,7 +1202,7 @@ class DoubanRankPlus(_PluginBase):
                                 )
 
                                 logger.info(
-                                    f"豆瓣IP已受限制, 切换通过 meta 识别 {title} 的媒体信息, 类型: {meta.type}"
+                                    f"切换识别 {title} 的媒体信息, 类型: {meta.type}"
                                 )
                                 logger.debug(
                                     f"douban_last_ip_rate_limit_datetime:::{douban_last_ip_rate_limit_datetime}"
@@ -1258,11 +1284,11 @@ class DoubanRankPlus(_PluginBase):
                         # 识别媒体信息
                         if douban_last_ip_rate_limit_datetime:
                             logger.info(
-                                f"豆瓣IP已受限制, 切换通过 meta 识别 {title} 的媒体信息, 类型: {meta.type}"
+                                f"切换识别 {title} 的媒体信息, 类型: {meta.type}"
                             )
                         else:
                             logger.info(
-                                f"开始通过 meta 识别 {title} 的媒体信息, 类型: {meta.type}"
+                                f"开始识别 {title} 的媒体信息, 类型: {meta.type}"
                             )
                         mediainfo = self.chain.recognize_media(
                             meta=meta,
@@ -1567,56 +1593,107 @@ class DoubanRankPlus(_PluginBase):
 
     def __get_tmdbinfo_by_doubanid(
         self, doubanid: str, mtype: MediaType | None = None
-    ) -> Tuple[bool, dict[str, Any] | None]:
+    ) -> Tuple[dict[str, Any] | None, bool]:
         """
         根据豆瓣ID获取TMDB信息
         """
-        tmdbinfo = None
-        is_ip_rate_limit = False
-        doubaninfo = self.mediachain.douban_info(doubanid=doubanid, mtype=mtype)
-        if doubaninfo:
-            # 优先使用原标题匹配
-            if doubaninfo.get("original_title"):
-                meta = MetaInfo(title=doubaninfo.get("title", ""))
-                meta_org = MetaInfo(title=doubaninfo.get("original_title", ""))
-            else:
-                meta_org = meta = MetaInfo(title=doubaninfo.get("title", ""))
-            # 年份
-            if doubaninfo.get("year"):
-                meta.year = doubaninfo.get("year")
+        doubaninfo, is_ip_rate_limit = self.__douban_info(
+            doubanid=doubanid, mtype=mtype
+        )
+        if is_ip_rate_limit or not doubaninfo:
+            return None, is_ip_rate_limit
 
-            # 处理类型
-            if isinstance(doubaninfo.get("media_type"), MediaType):
-                meta.type = doubaninfo.get("media_type", None)
-            else:
-                meta.type = (
-                    MediaType.MOVIE
-                    if doubaninfo.get("type") == "movie"
-                    else MediaType.TV
-                )
-            # 匹配TMDB信息
+        # 优先使用原标题匹配
+        title = doubaninfo.get("title", "")
+        original_title = doubaninfo.get("original_title", "")
+        meta = MetaInfo(title=original_title if original_title else title)
+
+        # 年份
+        meta.year = doubaninfo.get("year")
+
+        # 处理类型
+        media_type = doubaninfo.get("media_type")
+        media_type = (
+            media_type
+            if isinstance(media_type, MediaType)
+            else MediaType.MOVIE if doubaninfo.get("type") == "movie" else MediaType.TV
+        )
+        meta.type = media_type
+
+        # 匹配TMDB信息
+        if original_title:
             meta_names = list(
-                dict.fromkeys(
-                    [k for k in [meta_org.name, meta.cn_name, meta.en_name] if k]
-                )
+                dict.fromkeys([title, original_title, meta.cn_name, meta.en_name])
             )
-
-            if mtype and mtype != MediaType.UNKNOWN:
-                __mtype = mtype
-            else:
-                __mtype = meta.type
-
-            for name in meta_names:
-                tmdbinfo = self.mediachain.match_tmdbinfo(
-                    name=name,
-                    year=meta.year,
-                    mtype=__mtype,
-                    season=meta.begin_season,
-                )
-                if tmdbinfo:
-                    # 合季季后返回
-                    tmdbinfo["season"] = meta.begin_season
-                    break
         else:
-            is_ip_rate_limit = True
-        return is_ip_rate_limit, tmdbinfo
+            meta_names = list(dict.fromkeys([title, meta.cn_name, meta.en_name]))
+
+        # 移除空值
+        meta_names = [name for name in meta_names if name]
+
+        __mtype = mtype if mtype and mtype != MediaType.UNKNOWN else meta.type
+
+        for name in meta_names:
+            tmdbinfo = self.mediachain.match_tmdbinfo(
+                name=name,
+                year=meta.year,
+                mtype=__mtype,
+                season=meta.begin_season,
+            )
+            if tmdbinfo:
+                # 合季季后返回
+                tmdbinfo["season"] = meta.begin_season
+                return tmdbinfo, is_ip_rate_limit
+
+        return None, is_ip_rate_limit
+
+    def __douban_info(
+        self, doubanid: str, mtype: MediaType | None = None
+    ) -> Tuple[dict[str, Any] | None, bool]:
+        """
+        获取豆瓣信息
+        :param doubanid: 豆瓣ID
+        :param mtype:    媒体类型
+        :return: 豆瓣信息
+        """
+        """
+        豆瓣IP速率限制错误信息
+        {'msg': 'subject_ip_rate_limit', 'code': 1309, 'request': 'GET /v2/movie/30483637', 'localized_message': '您所在的网络存在异常，请登录后重试。'}
+        """
+
+        def __douban_tv() -> Tuple[dict[str, Any] | None, bool]:
+            """
+            获取豆瓣剧集信息
+            """
+            info = self.doubanapi.tv_detail(doubanid)
+            logger.debug(f"🚀 ~ 获取到豆瓣剧集信息：{info}")
+            if info:
+                if "subject_ip_rate_limit" in info.get("msg", ""):
+                    logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")
+                    return None, True
+            return info, False
+
+        def __douban_movie() -> Tuple[dict[str, Any] | None, bool]:
+            """
+            获取豆瓣电影信息
+            """
+            info = self.doubanapi.movie_detail(doubanid)
+            logger.debug(f"🚀 ~ 获取到豆瓣电影信息：{info}")
+            if info:
+                if "subject_ip_rate_limit" in info.get("msg", ""):
+                    logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")
+                    return None, True
+            return info, False
+
+        if not doubanid:
+            return None, False
+        logger.info(f"开始获取豆瓣信息：{doubanid} ...")
+        if mtype == MediaType.TV:
+            return __douban_tv()
+        else:
+            movie_info, is_ip_rate_limit = __douban_movie()
+            if not movie_info and not is_ip_rate_limit:
+                logger.debug("未从电影类型获取到信息，返回从剧集获取信息")
+                return __douban_tv()
+            else:
+                return movie_info, is_ip_rate_limit
