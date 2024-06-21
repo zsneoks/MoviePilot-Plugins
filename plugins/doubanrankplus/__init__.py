@@ -80,7 +80,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.11"
+    plugin_version = "0.0.12"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -1637,7 +1637,7 @@ class DoubanRankPlus(_PluginBase):
         # 匹配TMDB信息
         if original_title:
             meta_names = list(
-                dict.fromkeys([title, original_title, meta.cn_name, meta.en_name])
+                dict.fromkeys([original_title, title, meta.cn_name, meta.en_name])
             )
         else:
             meta_names = list(dict.fromkeys([title, meta.cn_name, meta.en_name]))

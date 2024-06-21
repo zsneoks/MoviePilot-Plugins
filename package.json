@@ -3,11 +3,12 @@
     "name": "豆瓣榜单订阅Plus",
     "description": "自动订阅豆瓣热门榜单。增加自定义保存路径，全季度订阅，上映年份过滤。",
     "labels": "订阅",
-    "version": "0.0.11",
+    "version": "0.0.12",
     "icon": "movie.jpg",
     "author": "jxxghp,boeto",
     "level": 2,
     "history": {
+      "v0.0.12": "perf: 优先使用原标题匹配TMDB信息",
       "v0.0.11": "fix: unique_flag处理记录",
       "v0.0.10": "perf: 优化rssinfo识别和历史记录处理判定",
       "v0.0.9": "fix: 从rss地址中获取类型",
