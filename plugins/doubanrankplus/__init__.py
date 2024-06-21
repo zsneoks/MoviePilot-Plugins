@@ -80,7 +80,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.10"
+    plugin_version = "0.0.11"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -1182,7 +1182,7 @@ class DoubanRankPlus(_PluginBase):
                                     )
                                 )
                                 history.append(history_payload)
-                                # self.save_data("history", history)
+                                unique_flags.add(unique_flag)
                                 logger.debug(f"已添加到历史：{history_payload}")
                                 continue
                             elif is_ip_rate_limit:
@@ -1224,7 +1224,7 @@ class DoubanRankPlus(_PluginBase):
                                         title, unique_flag, year
                                     )
                                     history.append(history_payload)
-                                    # self.save_data("history", history)
+                                    unique_flags.add(unique_flag)
                                     logger.debug(f"已添加到历史：{history_payload}")
                                     continue
                             else:
@@ -1257,7 +1257,7 @@ class DoubanRankPlus(_PluginBase):
                                         title, unique_flag, year, douban_id
                                     )
                                     history.append(history_payload)
-                                    # self.save_data("history", history)
+                                    unique_flags.add(unique_flag)
                                     logger.debug(f"已添加到历史：{history_payload}")
                                     continue
 
@@ -1280,7 +1280,7 @@ class DoubanRankPlus(_PluginBase):
                                     )
                                 )
                                 history.append(history_payload)
-                                # self.save_data("history", history)
+                                unique_flags.add(unique_flag)
                                 logger.debug(f"已添加到历史：{history_payload}")
                                 continue
 
@@ -1308,7 +1308,7 @@ class DoubanRankPlus(_PluginBase):
                                 )
                             )
                             history.append(history_payload)
-                            # self.save_data("history", history)
+                            unique_flags.add(unique_flag)
                             logger.debug(f"已添加到历史：{history_payload}")
                             continue
 
@@ -1387,8 +1387,8 @@ class DoubanRankPlus(_PluginBase):
                         "status": status.value,
                     }
                     history.append(history_payload)
+                    unique_flags.add(unique_flag)
                     logger.debug(f"已添加到历史：{history_payload}")
-                    # self.save_data("history", history)
 
             except Exception as e:
                 logger.error(f"处理RSS地址：{addr} 出错: {str(e)}")
