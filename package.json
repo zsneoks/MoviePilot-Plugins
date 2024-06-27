@@ -27,11 +27,12 @@
     "name": "缺失集数订阅",
     "description": "订阅媒体库缺失集数的电视剧",
     "labels": "订阅",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "icon": "EpisodeNoExist.png",
     "author": "boeto",
     "level": 2,
     "history": {
+      "v0.0.3": "feat: 增加缺失按当前日期判断",
       "v0.0.2": "feat: 增加媒体白名单",
       "v0.0.1": "feat: 订阅媒体库缺失集数"
     }
