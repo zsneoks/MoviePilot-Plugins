@@ -107,9 +107,9 @@ class EpisodeNoExist(_PluginBase):
     # 插件描述
     plugin_desc = "订阅媒体库缺失集数的电视剧"
     # 插件图标
-    plugin_icon = "EpisodeNoExist.png"
+    plugin_icon = "movie.jpg"
     # 插件版本
-    plugin_version = "0.0.1"
+    plugin_version = "0.0.2"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -138,6 +138,7 @@ class EpisodeNoExist(_PluginBase):
     _history_type: str = HistoryDataType.LATEST.value
     _no_exist_action: str = NoExistAction.ONLY_HISTORY.value
     _save_path_replaces: List[str] = []
+    _whitelist_librarys: List[str] = []
 
     def init_plugin(self, config: dict[str, Any] | None = None):
         self.subscribechain = SubscribeChain()
@@ -164,6 +165,12 @@ class EpisodeNoExist(_PluginBase):
                 self._save_path_replaces = _save_path_replaces.split("\n")
             else:
                 self._save_path_replaces = []
+
+            _whitelist_librarys = config.get("whitelist_librarys", "")
+            if _whitelist_librarys and isinstance(_whitelist_librarys, str):
+                self._whitelist_librarys = _whitelist_librarys.split(",")
+            else:
+                self._whitelist_librarys = []
 
         # 停止现有任务
         self.stop_service()
@@ -270,7 +277,6 @@ class EpisodeNoExist(_PluginBase):
 
     def __refresh(self):
         self.__get_mediaserver_tv_info()
-        pass
 
     def __get_mediaserver_tv_info(self):
         """
@@ -327,9 +333,9 @@ class EpisodeNoExist(_PluginBase):
 
         mediaservers = settings.MEDIASERVER.split(",")
 
-        # 白名单, 只获取黑名单外指定的媒体库
-        whitelist_librarys = ["TvTest"]
-        logger.debug(f"白名单媒体库: {whitelist_librarys}")
+        # # 白名单, 只获取黑名单外指定的媒体库
+        # whitelist_librarys = ["TvTest"]
+        logger.debug(f"白名单媒体库: {self._whitelist_librarys}")
 
         item_unique_flags = history.get("item_unique_flags", [])
         logger.debug(f"item_unique_flags: {item_unique_flags}")
@@ -342,7 +348,7 @@ class EpisodeNoExist(_PluginBase):
             for library in MediaServerChain().librarys(mediaserver):
                 logger.debug(f"媒体库名：{library.name}")
                 # 非白名单 跳过
-                if library.name not in whitelist_librarys:
+                if library.name not in self._whitelist_librarys:
                     continue
                 logger.info(f"正在获取 {mediaserver} 媒体库 {library.name} ...")
                 logger.debug(f"library.id: {library.id}")
@@ -648,6 +654,7 @@ class EpisodeNoExist(_PluginBase):
             "history_type": self._history_type,
             "no_exist_action": self._no_exist_action,
             "save_path_replaces": "\n".join(map(str, self._save_path_replaces)),
+            "whitelist_librarys": ",".join(map(str, self._whitelist_librarys)),
         }
         logger.debug(f"更新配置 {__config}")
         self.update_config(__config)
@@ -1047,6 +1054,25 @@ class EpisodeNoExist(_PluginBase):
                         "content": [
                             {
                                 "component": "VCol",
+                                "props": {"cols": 12, "md": 12},
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "whitelist_librarys",
+                                            "label": "电视剧媒体库白名单",
+                                            "placeholder": "媒体库名称, 多个名称用英文逗号分隔",
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
                                 "content": [
                                     {
                                         "component": "VTextarea",
@@ -1070,6 +1096,7 @@ class EpisodeNoExist(_PluginBase):
             "history_type": HistoryDataType.LATEST.value,
             "save_path_replaces": "",
             "no_exist_action": NoExistAction.ONLY_HISTORY.value,
+            "whitelist_librarys": "",
         }
 
     def __get_action_buttons_content(self, unique: str | None, status: str):
