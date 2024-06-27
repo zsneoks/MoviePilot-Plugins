@@ -76,11 +76,11 @@ class DoubanRankPlus(_PluginBase):
     # 插件名称
     plugin_name = "豆瓣榜单Plus"
     # 插件描述
-    plugin_desc = "自动订阅豆瓣热门榜单。增加自定义保存路径，全季度订阅，上映年份过滤。"
+    plugin_desc = "自动订阅豆瓣热门榜单增强版"
     # 插件图标
-    plugin_icon = "movie.jpg"
+    plugin_icon = "DouBanRankPlus.png"
     # 插件版本
-    plugin_version = "0.0.12"
+    plugin_version = "0.0.13"
     # 插件作者
     plugin_author = "jxxghp,boeto"
     # 作者主页
@@ -1680,7 +1680,6 @@ class DoubanRankPlus(_PluginBase):
             获取豆瓣剧集信息
             """
             info = self.doubanapi.tv_detail(doubanid)
-            logger.debug(f"🚀 ~ 获取到豆瓣剧集信息：{info}")
             if info:
                 if "subject_ip_rate_limit" in info.get("msg", ""):
                     logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")
@@ -1692,7 +1691,6 @@ class DoubanRankPlus(_PluginBase):
             获取豆瓣电影信息
             """
             info = self.doubanapi.movie_detail(doubanid)
-            logger.debug(f"🚀 ~ 获取到豆瓣电影信息：{info}")
             if info:
                 if "subject_ip_rate_limit" in info.get("msg", ""):
                     logger.warn(f"触发豆瓣IP速率限制，错误信息：{info} ...")

@@ -1,13 +1,14 @@
 {
   "DoubanRankPlus": {
     "name": "豆瓣榜单订阅Plus",
-    "description": "自动订阅豆瓣热门榜单。增加自定义保存路径，全季度订阅，上映年份过滤。",
+    "description": "自动订阅豆瓣热门榜单增强版",
     "labels": "订阅",
-    "version": "0.0.12",
-    "icon": "movie.jpg",
+    "version": "0.0.13",
+    "icon": "DouBanRankPlus.png",
     "author": "jxxghp,boeto",
     "level": 2,
     "history": {
+      "v0.0.13": "perf: 更新icon",
       "v0.0.12": "perf: 优先使用原标题匹配TMDB信息",
       "v0.0.11": "fix: unique_flag处理记录",
       "v0.0.10": "perf: 优化rssinfo识别和历史记录处理判定",
@@ -20,6 +21,18 @@
       "v0.0.3": "refactor:将 tmdbinfo 统一用 mediainfo 来调用",
       "v0.0.2": "fix: 修正动漫未设置自定义路径时跳过处理的问题",
       "v0.0.1": "feat: 增加自定义保存路径，全季度订阅，上映年份过滤"
+    }
+  },
+  "EpisodeNoExist": {
+    "name": "缺失集数订阅",
+    "description": "订阅媒体库缺失集数的电视剧",
+    "labels": "订阅",
+    "version": "0.0.1",
+    "icon": "EpisodeNoExist.png",
+    "author": "boeto",
+    "level": 2,
+    "history": {
+      "v0.0.1": "feat: 订阅媒体库缺失集数"
     }
   }
 }
