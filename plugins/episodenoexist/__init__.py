@@ -108,9 +108,9 @@ class EpisodeNoExist(_PluginBase):
     # 插件描述
     plugin_desc = "订阅媒体库缺失集数的电视剧"
     # 插件图标
-    plugin_icon = "EpisodeNoExist.png"
+    plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/EpisodeNoExist.png"
     # 插件版本
-    plugin_version = "0.0.3"
+    plugin_version = "0.0.4"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -558,7 +558,7 @@ class EpisodeNoExist(_PluginBase):
                 )
 
             tmdbinfo_seasons = tmdbinfo.seasons.items()
-            logger.debug(f" 【{title}】 获取到TMDB季集信息: {tmdbinfo_seasons}")
+            # logger.debug(f" 【{title}】 获取到TMDB季集信息: {tmdbinfo_seasons}")
             if not tmdbinfo_seasons:
                 logger.debug(f" 【{title}】 未获取到TMDB季集信息, 跳过获取缺失集数")
                 return False, tv_no_exist_info
@@ -657,12 +657,14 @@ class EpisodeNoExist(_PluginBase):
             if episode and episode.air_date:
                 # 将 air_date 字符串转换为 datetime 对象
                 air_date = datetime.datetime.strptime(episode.air_date, "%Y-%m-%d")
+                __episode_name = f"【TMDBID: {tmdbid}】第 {season}季 {episode.name}"
                 # 比较两个日期
                 if air_date.date() < current_time.date():
-                    logger.debug("air_date 时间比现在早")
                     episodes.append(episode.episode_number)
                 else:
-                    logger.debug("air_date 时间不比现在早")
+                    logger.debug(
+                        f"{__episode_name} air_date: {episode.air_date} 发布时间比现在晚, 不添加进集统计"
+                    )
 
         logger.debug(f"筛选后的集数::: {episodes}")
 
@@ -1172,7 +1174,7 @@ class EpisodeNoExist(_PluginBase):
                 },
                 "events": {
                     "click": {
-                        "api": f"plugin/EpisodeNoExist/set_all_exist_history",
+                        "api": "plugin/EpisodeNoExist/set_all_exist_history",
                         "method": "get",
                         "params": {
                             "key": f"{unique}",
@@ -1191,7 +1193,7 @@ class EpisodeNoExist(_PluginBase):
                 },
                 "events": {
                     "click": {
-                        "api": f"plugin/EpisodeNoExist/delete_history",
+                        "api": "plugin/EpisodeNoExist/delete_history",
                         "method": "get",
                         "params": {
                             "key": f"{unique}",
@@ -1256,9 +1258,10 @@ class EpisodeNoExist(_PluginBase):
         if status == HistoryStatus.NO_EXIST.value:
             status = f"缺失{season_no_exist_count}季, {episode_no_exist_count}集"
 
-        link = settings.MP_DOMAIN(
-            f"#/media?mediaid=tmdb:{tmdbid}&type={MediaType.TV.value}"
-        )
+        mp_domain = settings.MP_DOMAIN()
+        link = f"#/media?mediaid=tmdb:{tmdbid}&type={MediaType.TV.value}"
+        if mp_domain:
+            link = f"{mp_domain}/{link}"
 
         unique = history.get("unique")
 
@@ -1657,7 +1660,7 @@ class EpisodeNoExist(_PluginBase):
             HistoryDataType.FAILED.value: history_failed,
             HistoryDataType.ALL_EXIST.value: history_all_exist,
             HistoryDataType.NO_EXIST.value: history_no_exist,
-            HistoryDataType.ALL.value: history_all,  # 假设history_latest应该在这里处理
+            HistoryDataType.ALL.value: history_all,
         }
 
         historys_in_type = history_type_to_list.get(self._history_type, history_all[:6])
@@ -1687,5 +1690,5 @@ class EpisodeNoExist(_PluginBase):
                     historys_statistics_content,
                     historys_posts_content,
                 ],
-            }
+            },
         ]

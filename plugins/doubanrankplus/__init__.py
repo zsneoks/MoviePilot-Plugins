@@ -78,11 +78,11 @@ class DoubanRankPlus(_PluginBase):
     # 插件描述
     plugin_desc = "自动订阅豆瓣热门榜单增强版"
     # 插件图标
-    plugin_icon = "DouBanRankPlus.png"
+    plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/DouBanRankPlus.png"
     # 插件版本
-    plugin_version = "0.0.13"
+    plugin_version = "0.0.14"
     # 插件作者
-    plugin_author = "jxxghp,boeto"
+    plugin_author = "boeto"
     # 作者主页
     author_url = "https://github.com/boeto/MoviePilot-Plugins"
     # 插件配置项ID前缀
