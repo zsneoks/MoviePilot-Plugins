@@ -80,7 +80,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/DouBanRankPlus.png"
     # 插件版本
-    plugin_version = "0.0.14"
+    plugin_version = "0.0.15"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -1045,7 +1045,7 @@ class DoubanRankPlus(_PluginBase):
             self._clearflag = False
             logger.info(f"已清理所有 {self.plugin_name} 的历史记录")
         else:
-            history = self.get_data("history", [])
+            history = self.get_data("history") or []
             if history and self._clearflag_unrecognized:
                 original_length = len(history)
                 history = [
