@@ -112,7 +112,7 @@ class EpisodeNoExist(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/EpisodeNoExist.png"
     # 插件版本
-    plugin_version = "0.0.5"
+    plugin_version = "0.0.6"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -1693,17 +1693,18 @@ class EpisodeNoExist(_PluginBase):
             HistoryDataType.ALL.value: history_all,
         }
 
+        history_not_all_no_exist = [
+            history
+            for history in history_no_exist
+            if any(
+                season_info["episode_no_exist"]
+                for season_info in history.get("tv_no_exist_info", {})
+                .get("season_episode_no_exist_info", {})
+                .values()
+            )
+        ]
+
         if self._history_type == HistoryDataType.NOT_ALL_NO_EXIST.value:
-            history_not_all_no_exist = [
-                history
-                for history in history_no_exist
-                if any(
-                    season_info["episode_no_exist"]
-                    for season_info in history.get("tv_no_exist_info", {})
-                    .get("season_episode_no_exist_info", {})
-                    .values()
-                )
-            ]
             historys_in_type = history_not_all_no_exist
         else:
             historys_in_type = history_type_to_list.get(
