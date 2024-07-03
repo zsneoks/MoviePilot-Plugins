@@ -112,7 +112,7 @@ class EpisodeNoExist(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/EpisodeNoExist.png"
     # 插件版本
-    plugin_version = "0.0.7"
+    plugin_version = "0.0.8"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -429,7 +429,7 @@ class EpisodeNoExist(_PluginBase):
 
                     if is_add_subscribe_success and tv_no_exist_info:
                         if tv_no_exist_info.season_episode_no_exist_info is None:
-                            logger.info(f"【{item_title}】所有季集均已存在")
+                            logger.info(f"【{item_title}】所有季集均已存在/订阅")
                             __append_history(
                                 item_unique_flag=item_unique_flag,
                                 exist_status=HistoryStatus.ALL_EXIST,
@@ -588,6 +588,11 @@ class EpisodeNoExist(_PluginBase):
                         continue
                     # 该季总集数
                     episode_total = len(filted_episodes)
+
+                    # 判断用户是否已经添加订阅
+                    if self.subscribechain.subscribeoper.exists(tmdbid, season=season):
+                        logger.info(f"【{title}】第【{season}】季已存在订阅, 跳过")
+                        continue
                     __append_season_info(
                         season=season,
                         episode_no_exist=[],
@@ -626,6 +631,12 @@ class EpisodeNoExist(_PluginBase):
                             # 该季全部集存在, 不添加季集信息
                             continue
 
+                        # 判断用户是否已经添加订阅
+                        if self.subscribechain.subscribeoper.exists(
+                            tmdbid, season=season
+                        ):
+                            logger.info(f"【{title}】第【{season}】季已存在订阅, 跳过")
+                            continue
                         # 添加不存在的季集信息
                         __append_season_info(
                             season=season,
@@ -634,6 +645,12 @@ class EpisodeNoExist(_PluginBase):
                         )
                     else:
                         logger.debug(f"【{title}】第【{season}】季全集不存在")
+                        # 判断用户是否已经添加订阅
+                        if self.subscribechain.subscribeoper.exists(
+                            tmdbid, season=season
+                        ):
+                            logger.info(f"【{title}】第【{season}】季已存在订阅, 跳过")
+                            continue
                         # 该季全集不存在
                         __append_season_info(
                             season=season,
@@ -641,7 +658,7 @@ class EpisodeNoExist(_PluginBase):
                             episode_total=episode_total,
                         )
 
-            logger.debug(f"【{title}】缺失集数信息：{tv_no_exist_info}")
+            logger.debug(f"【{title}】季集信息: {tv_no_exist_info}")
 
             # 存在不完整的剧集
             if tv_no_exist_info.season_episode_no_exist_info:
@@ -649,7 +666,7 @@ class EpisodeNoExist(_PluginBase):
                 return True, tv_no_exist_info
 
             # 全部存在
-            logger.debug(f"【{title}】所有季集均已存在")
+            logger.debug(f"【{title}】所有季集均已存在/订阅")
             return True, tv_no_exist_info
 
         else:
