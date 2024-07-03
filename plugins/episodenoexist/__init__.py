@@ -112,7 +112,7 @@ class EpisodeNoExist(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/EpisodeNoExist.png"
     # 插件版本
-    plugin_version = "0.0.6"
+    plugin_version = "0.0.7"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -142,6 +142,7 @@ class EpisodeNoExist(_PluginBase):
     _no_exist_action: str = NoExistAction.ONLY_HISTORY.value
     _save_path_replaces: List[str] = []
     _whitelist_librarys: List[str] = []
+    _whitelist_media_servers: List[str] = []
 
     def init_plugin(self, config: dict[str, Any] | None = None):
         self.subscribechain = SubscribeChain()
@@ -175,6 +176,12 @@ class EpisodeNoExist(_PluginBase):
                 self._whitelist_librarys = _whitelist_librarys.split(",")
             else:
                 self._whitelist_librarys = []
+
+            _whitelist_media_servers = config.get("whitelist_media_servers", "")
+            if _whitelist_media_servers and isinstance(_whitelist_media_servers, str):
+                self._whitelist_media_servers = _whitelist_media_servers.split(",")
+            else:
+                self._whitelist_media_servers = []
 
         # 停止现有任务
         self.stop_service()
@@ -333,7 +340,10 @@ class EpisodeNoExist(_PluginBase):
 
         # # 白名单, 只获取黑名单外指定的媒体库
         # whitelist_librarys = ["TvTest"]
-        logger.info(f"白名单媒体库: {self._whitelist_librarys}")
+        logger.info(
+            f"媒体服务器白名单: {self._whitelist_media_servers if self._whitelist_media_servers else '全部'}"
+        )
+        logger.info(f"媒体库白名单: {self._whitelist_librarys}")
 
         item_unique_flags = history.get("item_unique_flags", [])
         logger.debug(f"item_unique_flags: {item_unique_flags}")
@@ -342,10 +352,15 @@ class EpisodeNoExist(_PluginBase):
         for mediaserver in mediaservers:
             if not mediaserver:
                 continue
+            if (
+                self._whitelist_media_servers
+                and mediaserver not in self._whitelist_media_servers
+            ):
+                logger.info(f"【{mediaserver}】不在媒体服务器白名单内, 跳过")
+                continue
             logger.info(f"开始获取媒体库 {mediaserver} 的数据 ...")
             for library in MediaServerChain().librarys(mediaserver):
                 logger.debug(f"媒体库名：{library.name}")
-                # 非白名单 跳过
                 if library.name not in self._whitelist_librarys:
                     continue
                 logger.info(f"正在获取 {mediaserver} 媒体库 {library.name} ...")
@@ -681,6 +696,9 @@ class EpisodeNoExist(_PluginBase):
             "no_exist_action": self._no_exist_action,
             "save_path_replaces": "\n".join(map(str, self._save_path_replaces)),
             "whitelist_librarys": ",".join(map(str, self._whitelist_librarys)),
+            "whitelist_media_servers": ",".join(
+                map(str, self._whitelist_media_servers)
+            ),
         }
         logger.info(f"更新配置 {__config}")
         self.update_config(__config)
@@ -754,20 +772,11 @@ class EpisodeNoExist(_PluginBase):
             return True
 
         logger.info(f"开始添加订阅: {title_season}")
-        # logger.debug(f"title::: {title}")
-        # logger.debug(f"year::: {year}")
-        # logger.debug(f"MediaType.TV::: {MediaType.TV}")
-        # logger.debug(f"tmdbid::: {tmdbid}")
-        # logger.debug(f"self.plugin_name::: {self.plugin_name}")
-        # logger.debug(f"save_path_replaced::: {save_path_replaced}")
-        # logger.debug(f"season::: {season}")
-        # logger.debug(f"type(season)::: {type(season)}")
 
         if not isinstance(season, int):
             try:
                 season = int(season)
             except ValueError:
-                # 处理无法转换为整数的情况，例如 season 是一个无法解析为数字的字符串
                 logger.warn("season 无法转换为整数")
 
         # 添加订阅
@@ -851,6 +860,7 @@ class EpisodeNoExist(_PluginBase):
                         logger.info(
                             f"【{title}】第 {season} 季所有集均缺失, 历史数据类型为 {self._history_type}, 将添加订阅"
                         )
+
                 else:
                     logger.info(
                         f"【{title}】第 {season} 季缺失集数: {episode_no_exist}, 将添加订阅"
@@ -1119,13 +1129,32 @@ class EpisodeNoExist(_PluginBase):
                                     {
                                         "component": "VTextField",
                                         "props": {
-                                            "model": "whitelist_librarys",
-                                            "label": "电视剧媒体库白名单",
-                                            "placeholder": "媒体库名称, 多个名称用英文逗号分隔",
+                                            "model": "whitelist_media_servers",
+                                            "label": "媒体服务器白名单",
+                                            "placeholder": "留空默认全部, 多个名称用英文逗号分隔: emby,jellyfin,plex",
                                         },
                                     }
                                 ],
-                            }
+                            },
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 12},
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "whitelist_librarys",
+                                            "label": "电视剧媒体库白名单",
+                                            "placeholder": "*必填, 多个名称用英文逗号分隔",
+                                        },
+                                    }
+                                ],
+                            },
                         ],
                     },
                     {
@@ -1156,6 +1185,7 @@ class EpisodeNoExist(_PluginBase):
             "history_type": HistoryDataType.LATEST.value,
             "save_path_replaces": "",
             "no_exist_action": NoExistAction.ONLY_HISTORY.value,
+            "whitelist_media_servers": "",
             "whitelist_librarys": "",
         }
 
@@ -1510,52 +1540,45 @@ class EpisodeNoExist(_PluginBase):
     ) -> dict[str, Any]:
         icon_content = EpisodeNoExist.__get_icon_content().get(icon_name, "")
         total_elements = {
-            "component": "VCol",
-            "props": {"cols": 6, "md": 2},
+            "component": "VCard",
+            "props": {
+                "variant": "tonal",
+                "style": "width: 10rem;",
+            },
             "content": [
                 {
-                    "component": "VCard",
+                    "component": "VCardText",
                     "props": {
-                        "variant": "tonal",
+                        "class": "d-flex align-center",
                     },
                     "content": [
+                        icon_content,
                         {
-                            "component": "VCardText",
+                            "component": "div",
                             "props": {
-                                "class": "d-flex align-center",
+                                "class": "ml-2",
                             },
                             "content": [
-                                icon_content,
+                                {
+                                    "component": "span",
+                                    "props": {"class": "text-caption"},
+                                    "text": f"{title}",
+                                },
                                 {
                                     "component": "div",
-                                    "props": {
-                                        "class": "ml-2",
-                                    },
+                                    "props": {"class": "d-flex align-center flex-wrap"},
                                     "content": [
                                         {
                                             "component": "span",
-                                            "props": {"class": "text-caption"},
-                                            "text": f"{title}",
-                                        },
-                                        {
-                                            "component": "div",
-                                            "props": {
-                                                "class": "d-flex align-center flex-wrap"
-                                            },
-                                            "content": [
-                                                {
-                                                    "component": "span",
-                                                    "props": {"class": "text-h6"},
-                                                    "text": f"{value}",
-                                                }
-                                            ],
-                                        },
+                                            "props": {"class": "text-h6"},
+                                            "text": f"{value}",
+                                        }
                                     ],
                                 },
                             ],
-                        }
+                        },
                     ],
-                },
+                }
             ],
         }
         return total_elements
@@ -1617,7 +1640,7 @@ class EpisodeNoExist(_PluginBase):
 
         component = {
             "component": "VRow",
-            "props": {"class": "flex flex-row justify-center"},
+            "props": {"class": "flex flex-row justify-center flex-wrap gap-6"},
             "content": content,
         }
         return component
