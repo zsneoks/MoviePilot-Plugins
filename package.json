@@ -9,6 +9,7 @@
     "level": 2,
     "v2": true,
     "history": {
+      "v0.0.2": "feat: 增加迁移订阅历史",
       "v0.0.1": "feat: 迁移旧MP的订阅配置到新MP"
     }
   },
