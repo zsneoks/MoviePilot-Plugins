@@ -1,4 +1,17 @@
 {
+  "MigrateSub": {
+    "name": "迁移订阅",
+    "description": "迁移旧MP的订阅配置到新MP",
+    "labels": "订阅",
+    "version": "0.0.1",
+    "icon": "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/MigrateSub.png",
+    "author": "boeto",
+    "level": 2,
+    "v2": true,
+    "history": {
+      "v0.0.1": "feat: 迁移旧MP的订阅配置到新MP"
+    }
+  },
   "DoubanRankPlus": {
     "name": "豆瓣榜单订阅Plus",
     "description": "自动订阅豆瓣热门榜单增强版",
