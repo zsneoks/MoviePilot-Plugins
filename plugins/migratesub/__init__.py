@@ -1,3 +1,4 @@
+import json
 from typing import Any, Dict, Optional, Tuple, List, Self
 import datetime
 import pytz
@@ -79,7 +80,7 @@ class MigrateSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/MigrateSub.png"
     # 插件版本
-    plugin_version = "0.0.2"
+    plugin_version = "0.0.3"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -609,10 +610,15 @@ class MigrateSub(_PluginBase):
 
             # 去掉主键
             if "id" in kwargs:
-                kwargs.pop("id")
+                kwargs.pop("id", None)
             # 未启用站点迁移则去掉订阅站点管理
-            if "sites" in kwargs and not self._is_with_sites:
-                kwargs.pop("sites", None)
+            if "sites" in kwargs:
+                if not self._is_with_sites:
+                    kwargs.pop("sites", None)
+                else:
+                    # 将字符串转为json
+                    __sites_str = item.get("sites") or "[]"
+                    kwargs["sites"] = json.loads(__sites_str)
 
             subHistory = SubscribeHistory(**kwargs)
             subHistory.create(self._subscribeoper._db)
