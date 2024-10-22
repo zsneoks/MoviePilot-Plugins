@@ -6,6 +6,7 @@ from typing import Optional, Tuple, List, Dict, Any, TypedDict
 import time
 import random
 import pytz
+import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from enum import Enum
@@ -76,11 +77,11 @@ class DoubanRankPlus(_PluginBase):
     # 插件名称
     plugin_name = "豆瓣榜单Plus"
     # 插件描述
-    plugin_desc = "自动订阅豆瓣热门榜单增强版"
+    plugin_desc = "豆瓣热门榜单增强版，支持配置和历史记录迁移到新MP"
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/DouBanRankPlus.png"
     # 插件版本
-    plugin_version = "0.0.15"
+    plugin_version = "0.0.16"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -95,11 +96,15 @@ class DoubanRankPlus(_PluginBase):
     # 退出事件
     _event = Event()
 
+    downloadchain: DownloadChain
+    subscribechain: SubscribeChain
+    mediachain: MediaChain
+    doubanapi: DoubanApi
+
     # 私有属性
-    downloadchain: DownloadChain = None
-    subscribechain: SubscribeChain = None
-    mediachain: MediaChain = None
-    doubanapi: DoubanApi = None
+    _plugin_id = "DoubanRankPlus"
+    _msg_install = "如果MP是V1版本需要**重启一次**让API生效，V2版本无需重启"
+    _msg_migrate_install = "请确保原MP已**安装并启用**此插件"
 
     _scheduler = None
     _douban_address = {
@@ -131,6 +136,10 @@ class DoubanRankPlus(_PluginBase):
     _history_type: str = HistoryDataType.LATEST.value
     _is_exit_ip_rate_limit: bool = False
 
+    _migrate_from_url = ""
+    _migrate_api_token = ""
+    _migrate_once = False
+
     def init_plugin(self, config: dict[str, Any] | None = None):
         self.downloadchain = DownloadChain()
         self.subscribechain = SubscribeChain()
@@ -142,6 +151,10 @@ class DoubanRankPlus(_PluginBase):
             self._proxy = config.get("proxy", False)
             self._onlyonce = config.get("onlyonce", False)
             self._is_seasons_all = config.get("is_seasons_all", True)
+
+            self._migrate_from_url = config.get("migrate_from_url", "")
+            self._migrate_api_token = config.get("migrate_api_token", "")
+            self._migrate_once = config.get("migrate_once", False)
 
             self._cron = (
                 config.get("cron", "").strip() if config.get("cron", "").strip() else ""
@@ -197,7 +210,7 @@ class DoubanRankPlus(_PluginBase):
                 self._scheduler = BackgroundScheduler(timezone=settings.TZ)
                 logger.info("豆瓣榜单Plus服务启动，立即运行一次")
                 self._scheduler.add_job(
-                    func=self.__refresh_rss,
+                    func=self.__start_task,
                     trigger="date",
                     run_date=datetime.datetime.now(tz=pytz.timezone(settings.TZ))
                     + datetime.timedelta(seconds=3),
@@ -249,7 +262,19 @@ class DoubanRankPlus(_PluginBase):
                 "endpoint": self.delete_history,
                 "methods": ["GET"],
                 "summary": "删除豆瓣榜单Plus历史记录",
-            }
+            },
+            {
+                "path": "/migrate-history",
+                "endpoint": self.get_migrate_history,
+                "methods": ["GET"],
+                "summary": "获取豆瓣榜单Plus历史记录",
+            },
+            {
+                "path": "/migrate-config",
+                "endpoint": self.get_migrate_config,
+                "methods": ["GET"],
+                "summary": "获取豆瓣榜单Plus配置",
+            },
         ]
 
     def get_service(self) -> List[Dict[str, Any]]:
@@ -266,20 +291,20 @@ class DoubanRankPlus(_PluginBase):
         if self._enabled and self._cron:
             return [
                 {
-                    "id": "DoubanRankPlus",
+                    "id": f"{self._plugin_id}",
                     "name": "豆瓣榜单Plus服务",
                     "trigger": CronTrigger.from_crontab(self._cron),
-                    "func": self.__refresh_rss,
+                    "func": self.__start_task,
                     "kwargs": {},
                 }
             ]
         elif self._enabled:
             return [
                 {
-                    "id": "DoubanRankPlus",
+                    "id": f"{self._plugin_id}",
                     "name": "豆瓣榜单Plus服务",
                     "trigger": CronTrigger.from_crontab("0 8 * * *"),
-                    "func": self.__refresh_rss,
+                    "func": self.__start_task,
                     "kwargs": {},
                 }
             ]
@@ -295,7 +320,7 @@ class DoubanRankPlus(_PluginBase):
                         "content": [
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "props": {"cols": 6, "md": 4},
                                 "content": [
                                     {
                                         "component": "VSwitch",
@@ -308,20 +333,7 @@ class DoubanRankPlus(_PluginBase):
                             },
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "proxy",
-                                            "label": "使用代理服务器",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "props": {"cols": 6, "md": 4},
                                 "content": [
                                     {
                                         "component": "VSwitch",
@@ -334,7 +346,20 @@ class DoubanRankPlus(_PluginBase):
                             },
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "props": {"cols": 6, "md": 4},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "proxy",
+                                            "label": "使用代理服务器",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 6, "md": 4},
                                 "content": [
                                     {
                                         "component": "VSwitch",
@@ -347,13 +372,39 @@ class DoubanRankPlus(_PluginBase):
                             },
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "props": {"cols": 6, "md": 4},
                                 "content": [
                                     {
                                         "component": "VSwitch",
                                         "props": {
                                             "model": "is_exit_ip_rate_limit",
-                                            "label": "未能从豆瓣获取数据时结束",
+                                            "label": "豆瓣限制时结束",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 6, "md": 4},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "clear",
+                                            "label": "清理历史记录",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 6, "md": 4},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "clear_unrecognized",
+                                            "label": "清理未识别历史",
                                         },
                                     }
                                 ],
@@ -534,26 +585,76 @@ class DoubanRankPlus(_PluginBase):
                         "content": [
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "props": {"cols": 12},
+                                "content": [
+                                    {
+                                        "component": "VAlert",
+                                        "props": {
+                                            "type": "info",
+                                            "variant": "tonal",
+                                        },
+                                        "content": [
+                                            {
+                                                "component": "span",
+                                                "text": f"{self._msg_install}",
+                                            }
+                                        ],
+                                    },
+                                    {
+                                        "component": "VAlert",
+                                        "props": {
+                                            "type": "info",
+                                            "variant": "tonal",
+                                        },
+                                        "content": [
+                                            {
+                                                "component": "span",
+                                                "text": f"下面配置仅在需要迁移插件的历史记录和配置时，在新MP中填写，开启运行一次选项并立即运行一次。原MP不需要填写下面的配置或开启选项，{self._msg_migrate_install }",
+                                            }
+                                        ],
+                                    },
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12},
                                 "content": [
                                     {
                                         "component": "VSwitch",
                                         "props": {
-                                            "model": "clear",
-                                            "label": "清理历史记录",
+                                            "model": "migrate_once",
+                                            "label": "迁移配置和历史一次",
                                         },
                                     }
                                 ],
                             },
                             {
                                 "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
+                                "props": {"cols": 12, "md": 6},
                                 "content": [
                                     {
-                                        "component": "VSwitch",
+                                        "component": "VTextField",
                                         "props": {
-                                            "model": "clear_unrecognized",
-                                            "label": "清理未识别历史记录",
+                                            "model": "migrate_from_url",
+                                            "label": "原MP地址: 例如 http://mp.com:3001",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "migrate_api_token",
+                                            "label": "原MP API Token",
                                         },
                                     }
                                 ],
@@ -577,6 +678,9 @@ class DoubanRankPlus(_PluginBase):
             "is_seasons_all": True,
             "history_type": HistoryDataType.LATEST.value,
             "is_exit_ip_rate_limit": False,
+            "migrate_from_url": "",
+            "migrate_api_token": "",
+            "migrate_once": False,
         }
 
     @staticmethod
@@ -776,7 +880,7 @@ class DoubanRankPlus(_PluginBase):
                     },
                     "events": {
                         "click": {
-                            "api": "plugin/DoubanRankPlus/delete_history",
+                            "api": f"plugin/{self._plugin_id}/delete_history",
                             "method": "get",
                             "params": {
                                 "key": f"{unique}",
@@ -985,13 +1089,22 @@ class DoubanRankPlus(_PluginBase):
         except Exception as e:
             print(str(e))
 
+    def __validate_token(self, api_token: str) -> Any:
+        """
+        验证 API 密钥
+        """
+        if api_token != settings.API_TOKEN:
+            return schemas.Response(success=False, message="API密钥错误")
+        return None
+
     def delete_history(self, key: str, apikey: str):
         """
         删除同步历史记录
         """
         logger.debug(f"删除同步历史记录:::{key}")
-        if apikey != settings.API_TOKEN:
-            return schemas.Response(success=False, message="API密钥错误")
+        validation_response = self.__validate_token(apikey)
+        if validation_response:
+            return validation_response
         # 历史记录
         historys = self.get_data("history")
         if not historys:
@@ -1001,11 +1114,37 @@ class DoubanRankPlus(_PluginBase):
         self.save_data("history", historys)
         return schemas.Response(success=True, message="删除成功")
 
-    def __update_config(self):
+    def get_migrate_history(self, migrate_api_token: str):
         """
-        更新配置
+        获取迁移l历史记录
         """
-        __config = {
+        logger.debug("获取迁移历史记录")
+        validation_response = self.__validate_token(migrate_api_token)
+        if validation_response:
+            return validation_response
+
+        return self.get_data("history")
+
+    def get_migrate_config(self, migrate_api_token: str):
+        """
+        获取迁移配置
+        """
+        validation_response = self.__validate_token(migrate_api_token)
+        if validation_response:
+            return validation_response
+
+        __config = self.__get_config()
+        logger.debug(f"获取迁移配置:::{__config}")
+        # 删除不需要的键
+        for key in ["migrate_api_token", "migrate_from_url", "migrate_once"]:
+            __config.pop(key, None)
+        return __config
+
+    def __get_config(self):
+        """
+        获取配置
+        """
+        return {
             "enabled": self._enabled,
             "cron": self._cron,
             "onlyonce": self._onlyonce,
@@ -1019,14 +1158,77 @@ class DoubanRankPlus(_PluginBase):
             "sleep_time": f"{self._min_sleep_time},{self._max_sleep_time}",
             "history_type": self._history_type,
             "is_exit_ip_rate_limit": self._is_exit_ip_rate_limit,
+            "migrate_from_url": self._migrate_from_url.rstrip("/"),
+            "migrate_api_token": self._migrate_api_token,
+            "migrate_once": self._migrate_once,
         }
+
+    def __update_config(self):
+        """
+        更新配置
+        """
+        __config = self.__get_config()
         logger.debug(f"更新配置 {__config}")
         self.update_config(__config)
 
-    def __refresh_rss(self):
+    def __start_task(self):
         """
-        刷新RSS
+        运行任务
         """
+        if self._migrate_once:
+            if self._migrate_from_url and self._migrate_api_token:
+                logger.info("开始从原MP迁移配置...")
+                __original_config = self.__get_migrate_config()
+                if __original_config:
+                    self._enabled = __original_config.get("enabled", self._enabled)
+                    self._cron = __original_config.get("cron", self._cron)
+                    self._onlyonce = __original_config.get("onlyonce", self._onlyonce)
+                    self._vote = __original_config.get("vote", self._vote)
+                    self._ranks = __original_config.get("ranks", self._ranks)
+                    self._rss_addrs = __original_config.get(
+                        "rss_addrs", self._rss_addrs
+                    ).split("\n")
+                    self._clear = __original_config.get("clear", self._clear)
+                    self._clear_unrecognized = __original_config.get(
+                        "clear_unrecognized", self._clear_unrecognized
+                    )
+                    self._is_seasons_all = __original_config.get(
+                        "is_seasons_all", self._is_seasons_all
+                    )
+                    self._release_year = __original_config.get(
+                        "release_year", self._release_year
+                    )
+                    self._min_sleep_time, self._max_sleep_time = map(
+                        int,
+                        __original_config.get("sleep_time", self._min_sleep_time).split(
+                            ","
+                        ),
+                    )
+                    self._history_type = __original_config.get(
+                        "history_type", self._history_type
+                    )
+                    self._is_exit_ip_rate_limit = __original_config.get(
+                        "is_exit_ip_rate_limit", self._is_exit_ip_rate_limit
+                    )
+                else:
+                    logger.warn("未获取到原MP配置，结束程序")
+                    return
+
+                __original_history = self.__get_migrate_history()
+                if __original_history:
+                    self.save_data("history", __original_history)
+                else:
+                    logger.warn("未获取到历史记录，结束程序")
+                    return
+
+                # 关闭一次性开关
+                self._migrate_once = False
+                self.__update_config()
+                logger.info("迁移配置和历史完成")
+            else:
+                logger.error("迁移配置错误，请检查是否填写了原MP地址和原MP API Token")
+                return
+
         logger.info("开始刷新豆瓣榜单Plus ...")
         addr_list = self._rss_addrs + [
             self._douban_address.get(rank) for rank in self._ranks
@@ -1066,7 +1268,12 @@ class DoubanRankPlus(_PluginBase):
         douban_last_ip_rate_limit_datetime = None
         douban_ip_rate_limit_times = 0
 
+        # count_addr_list = 0
         for addr_index, _addr in enumerate(addr_list):
+            # count_addr_list += 1
+            # if addr_index == 5 or addr_index == 5:
+            #     break
+
             if not _addr:
                 continue
             try:
@@ -1411,7 +1618,7 @@ class DoubanRankPlus(_PluginBase):
             logger.info(f"{mediainfo.title_year} 的自定义保存路径为: {save_path}")
 
         # 判断上映年份是否符合要求
-        if self._release_year and int(mediainfo.year) < self._release_year:
+        if self._release_year and int(mediainfo.year) < int(self._release_year):
             logger.info(
                 f"{mediainfo.title_year} 上映年份: {mediainfo.year}, 不符合要求"
             )
@@ -1649,10 +1856,7 @@ class DoubanRankPlus(_PluginBase):
 
         for name in meta_names:
             tmdbinfo = self.mediachain.match_tmdbinfo(
-                name=name,
-                year=meta.year,
-                mtype=__mtype,
-                season=meta.begin_season,
+                name=name, year=meta.year, mtype=__mtype, season=meta.begin_season
             )
             if tmdbinfo:
                 # 合季季后返回
@@ -1709,3 +1913,63 @@ class DoubanRankPlus(_PluginBase):
                 return __douban_tv()
             else:
                 return movie_info, is_ip_rate_limit
+
+    def __get_migrate_info(self, migrate_url: str):
+        """
+        从原MP API URL获取信息
+        """
+        logger.info(f"开始从原MP获取数据，【请求URL】：{migrate_url}")
+
+        try:
+            res = RequestUtils().request(method="get", url=migrate_url)
+            if not res:
+                logger.error(
+                    "没有获取到原MP信息，检查原MP地址和API Token是否正确，检查浏览器打开【请求URL】查看是能获取到数据"
+                )
+                if self._migrate_once:
+                    logger.error(f"{self._msg_migrate_install }。{self._msg_install}")
+                return None
+            res.raise_for_status()  # 检查响应状态码，如果不是 2xx，会抛出 HTTPError 异常
+            resData = res.json()
+
+            if isinstance(resData, dict):
+                if resData.get("success", "") is False:
+                    logger.error(f"获取原MP信息失败：{resData.get('message','')}")
+                    return None
+
+                if resData.get("detail", "") == "Not Found":
+                    logger.error("请检查【请求URL】是否能获取到数据")
+                    if self._migrate_once:
+                        logger.error(
+                            f"{self._msg_migrate_install }。{self._msg_install}"
+                        )
+                    return None
+
+            if isinstance(resData, list) and len(resData) == 0:
+                logger.info(f"没有需要添加的迁移信息：{resData}")
+                return None
+
+            return resData
+        except requests.exceptions.RequestException as err:
+            logger.error(f"请求错误发生: {err}")  # 打印所有请求错误
+        return None
+
+    def __get_migrate_plugin_api_url(self, endpoint: str) -> str:
+        """
+        获取插件API URL
+        """
+        return f"{self._migrate_from_url}/api/v1/plugin/{self._plugin_id}/{endpoint}?migrate_api_token={self._migrate_api_token}"
+
+    def __get_migrate_history(self):
+        """
+        获取所有迁移历史记录
+        """
+        url = self.__get_migrate_plugin_api_url("migrate-history")
+        return self.__get_migrate_info(url)
+
+    def __get_migrate_config(self):
+        """
+        获取所有迁移配置
+        """
+        url = self.__get_migrate_plugin_api_url("migrate-config")
+        return self.__get_migrate_info(url)
