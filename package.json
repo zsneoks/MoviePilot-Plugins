@@ -3,7 +3,7 @@
     "name": "迁移订阅",
     "description": "迁移旧MP的订阅配置到新MP",
     "labels": "订阅",
-    "version": "0.0.1",
+    "version": "0.0.5",
     "icon": "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/MigrateSub.png",
     "author": "boeto",
     "level": 2,
