@@ -87,7 +87,7 @@ class MigrateSub(_PluginBase):
 
     # 私有属性
     _plugin_id = "MigrateSub"
-    _msg_install = "请确保原MP已**安装并启用**此插件。如果是V1版本，需要安装插件后**重启一次**让API生效"
+    _msg_install = "请确保原MP已**安装并启用**此插件。如果原MP是V1版本，在安装插件后，原MP需要**重启一次**让API生效"
 
     _scheduler = None
     _subscribeoper: SubscribeOper
