@@ -252,7 +252,6 @@ class MigrateSub(_PluginBase):
             site_count = 0
             # 新增站点
             for item in ret_sites:
-                logger.debug(f"开始迁移站点：{item}")
                 logger.debug(f"开始迁移站点：{item.get('name')}")
                 site = Site(**item)
                 site.create(self._siteOper._db)
@@ -528,7 +527,6 @@ class MigrateSub(_PluginBase):
         添加订阅
         """
         item_name_year = f"{item.get('name', '')} ({item.get('year', '')})"
-        # logger.debug(f"收到订阅：{item}")
 
         tmdbid = item.get("tmdbid", None)
         doubanid = str(item.get("doubanid", None))
@@ -626,7 +624,6 @@ class MigrateSub(_PluginBase):
                 return None
             res.raise_for_status()  # 检查响应状态码，如果不是 2xx，会抛出 HTTPError 异常
             resData = res.json()
-            logger.debug(f"请求结果resData：{resData}")
 
             if isinstance(resData, dict):
                 if resData.get("success", "") is False:
