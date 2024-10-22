@@ -70,7 +70,7 @@ class MigrateSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/MigrateSub.png"
     # 插件版本
-    plugin_version = "0.0.5"
+    plugin_version = "0.0.6"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -87,6 +87,8 @@ class MigrateSub(_PluginBase):
 
     # 私有属性
     _plugin_id = "MigrateSub"
+    _msg_install = "请确保原MP已**安装并启用**此插件。如果是V1版本，需要安装插件后**重启一次**让API生效"
+
     _scheduler = None
     _subscribeoper: SubscribeOper
     _siteOper: SiteOper
@@ -485,7 +487,7 @@ class MigrateSub(_PluginBase):
                                         "content": [
                                             {
                                                 "component": "span",
-                                                "text": "新MP开启“迁移订阅历史/迁移订阅站点管理”选项需在**原MP同时安装并启用此插件**（仅在原MP开启“启用插件”选项即可，不需要填写或开启其他选项）。运行一次后关闭。如果需要再次运行，请手动开启",
+                                                "text": f"新MP开启“迁移订阅历史/迁移订阅站点管理”选项：{self._msg_install}。不需要填写或开启其他选项。运行一次后关闭，如果需要再次运行，请手动开启",
                                             }
                                         ],
                                     },
@@ -620,7 +622,7 @@ class MigrateSub(_PluginBase):
                     "没有获取到原MP信息，检查原MP地址和API Token是否正确，检查浏览器打开【请求URL】查看是能获取到数据"
                 )
                 if self._is_with_sites or self._is_with_sub_history:
-                    logger.error("检查原MP已安装并启用此插件")
+                    logger.error(f"{self._msg_install}")
                 return None
             res.raise_for_status()  # 检查响应状态码，如果不是 2xx，会抛出 HTTPError 异常
             resData = res.json()
@@ -633,7 +635,7 @@ class MigrateSub(_PluginBase):
                 if resData.get("detail", "") == "Not Found":
                     logger.error("请检查【请求URL】是否能获取到数据")
                     if self._is_with_sites or self._is_with_sub_history:
-                        logger.error("请确保原MP已安装并启用此插件")
+                        logger.error(f"{self._msg_install}")
                     return
 
             if isinstance(resData, list) and len(resData) == 0:
