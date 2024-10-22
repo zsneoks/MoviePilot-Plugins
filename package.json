@@ -24,6 +24,7 @@
     "version": "0.0.16",
     "icon": "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/DouBanRankPlus.png",
     "author": "boeto",
+    "v2": true,
     "level": 2,
     "history": {
       "v0.0.16": "feat: 增加配置和历史记录迁移到新MP",
