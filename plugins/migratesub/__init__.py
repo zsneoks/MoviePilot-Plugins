@@ -76,11 +76,11 @@ class MigrateSub(_PluginBase):
     # 插件名称
     plugin_name = "迁移订阅"
     # 插件描述
-    plugin_desc = "迁移旧MP的订阅配置到新MP"
+    plugin_desc = "迁移原MP的订阅配置到新MP"
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/MigrateSub.png"
     # 插件版本
-    plugin_version = "0.0.3"
+    plugin_version = "0.0.4"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -200,7 +200,6 @@ class MigrateSub(_PluginBase):
             for item in ret_sub_list:
                 # 新增订阅
                 (isAdded, msg) = self.__add_sub(item)
-                logger.debug(f"添加订阅结果：{isAdded}")
                 # deal_count += 1
                 if isAdded:
                     add_count += 1
@@ -212,7 +211,8 @@ class MigrateSub(_PluginBase):
 
             logger.debug(f"self._is_with_sites:{self._is_with_sites}")
             logger.debug(f"add_count:{add_count}")
-            if self._is_with_sites and add_count > 0:
+            # if self._is_with_sites and add_count > 0:
+            if self._is_with_sites > 0:
                 self.__migrate_sites()
 
         logger.debug(f"self._is_with_sub_history:{self._is_with_sub_history}")
@@ -236,7 +236,6 @@ class MigrateSub(_PluginBase):
             for item in ret_sub_history:
                 # 新增订阅历史
                 (isAdded, msg) = self.__add_sub_history(item)
-                logger.debug(f"添加订阅结果：{isAdded}")
                 # deal_count += 1
                 if isAdded:
                     add_count += 1
@@ -271,7 +270,12 @@ class MigrateSub(_PluginBase):
                 site = Site(**item)
                 site.create(self._siteOper._db)
                 site_count += 1
+
             logger.info("站点迁移完成，共添加 %s 条" % site_count)
+
+        # 关闭一次性开关
+        self._is_with_sites = False
+        self.__update_config()
 
     def __update_onlyonce(self, enabled: bool):
         self._onlyonce = enabled
@@ -408,7 +412,7 @@ class MigrateSub(_PluginBase):
                                         "component": "VSwitch",
                                         "props": {
                                             "model": "is_with_sites",
-                                            "label": "迁移站点管理",
+                                            "label": "迁移站点管理一次",
                                         },
                                     }
                                 ],
@@ -421,7 +425,7 @@ class MigrateSub(_PluginBase):
                                         "component": "VSwitch",
                                         "props": {
                                             "model": "is_with_sub_history",
-                                            "label": "迁移订阅历史",
+                                            "label": "迁移订阅历史一次",
                                         },
                                     }
                                 ],
@@ -476,7 +480,7 @@ class MigrateSub(_PluginBase):
                                         "content": [
                                             {
                                                 "component": "span",
-                                                "text": "迁移订阅站点管理”选项须知：将在成功迁移所有订阅之后重置新MP“站点管理”中已存在的站点！会重置新MP“站点管理”中已存在的站点！会重置新MP“站点管理”中已存在的站点！这样才能匹配上订阅中的“订阅站点”选项。如果不迁移站点管理，迁移的订阅中将不保留“订阅站点”选项，请按需开启",
+                                                "text": "迁移订阅站点管理”选项须知：不开启迁移站点管理，迁移的订阅中将不保留“订阅站点”选项。开启后会重置新MP“站点管理”中已存在的站点！会重置新MP“站点管理”中已存在的站点！会重置新MP“站点管理”中已存在的站点！这样才能匹配上订阅中的“订阅站点”选项。请按需开启",
                                             }
                                         ],
                                     },
@@ -495,26 +499,7 @@ class MigrateSub(_PluginBase):
                                         "content": [
                                             {
                                                 "component": "span",
-                                                "text": "新MP开启“迁移订阅历史/迁移订阅站点管理”选项需在**原MP同时安装并启用此插件**（仅在原MP开启“启用插件”选项即可，不需要填写或开启其他选项）",
-                                            }
-                                        ],
-                                    },
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VAlert",
-                                        "props": {
-                                            "type": "info",
-                                            "variant": "tonal",
-                                        },
-                                        "content": [
-                                            {
-                                                "component": "span",
-                                                "text": "“迁移订阅历史”选项：成功运行一次后关闭。如果需要再次运行，请手动开启“迁移订阅历史”选项",
+                                                "text": "新MP开启“迁移订阅历史/迁移订阅站点管理”选项需在**原MP同时安装并启用此插件**（仅在原MP开启“启用插件”选项即可，不需要填写或开启其他选项）。运行一次后关闭。如果需要再次运行，请手动开启",
                                             }
                                         ],
                                     },
