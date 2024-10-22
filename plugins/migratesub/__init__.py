@@ -5,7 +5,7 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 from threading import Event
-
+import requests
 from app.db import db_query
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.site_oper import SiteOper
@@ -61,16 +61,6 @@ class SubscribeHistoryOper:
             )
         return None
 
-    # @staticmethod
-    # @db_query
-    # def list_by_type(db: Session, mtype: str, page: int = 1, count: int = 30):
-    #     result = db.query(SubscribeHistory).filter(
-    #         SubscribeHistory.type == mtype
-    #     ).order_by(
-    #             SubscribeHistory.date.desc()
-    #     ).offset((page - 1) * count).limit(count).all()
-    #     return list(result)
-
 
 class MigrateSub(_PluginBase):
     # 插件名称
@@ -80,7 +70,7 @@ class MigrateSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/MigrateSub.png"
     # 插件版本
-    plugin_version = "0.0.4"
+    plugin_version = "0.0.5"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -179,6 +169,7 @@ class MigrateSub(_PluginBase):
         """
         启动迁移
         """
+
         if not self._migrate_api_token:
             logger.error("未设置迁移Token，结束迁移")
             return
@@ -186,12 +177,24 @@ class MigrateSub(_PluginBase):
             logger.error("未设置迁移url，结束迁移")
             return
 
+        self.__migrate_sub()
+
+        logger.debug(f"self._is_with_sites:{self._is_with_sites}")
+        if self._is_with_sites:
+            self.__migrate_sites()
+
+        logger.debug(f"self._is_with_sub_history:{self._is_with_sub_history}")
+        if self._is_with_sub_history:
+            self.__migrate_sub_history()
+
+        logger.info("全部迁移结束")
+
+    def __migrate_sub(self):
         logger.info("开始获取订阅 ...")
         ret_sub_list = self.__get_migrate_sub_list()
 
         if not ret_sub_list:
-            logger.warn("没有需要添加的订阅，结束迁移")
-            return
+            logger.warn("没有从原MP获取到订阅列表，结束订阅迁移")
         else:
             logger.info("获取到原MP订阅列表，开始添加订阅")
             add_count = 0
@@ -200,34 +203,18 @@ class MigrateSub(_PluginBase):
             for item in ret_sub_list:
                 # 新增订阅
                 (isAdded, msg) = self.__add_sub(item)
-                # deal_count += 1
                 if isAdded:
                     add_count += 1
                 logger.info(msg)
 
-                # if deal_count == 20:
-                #     break
             logger.info("订阅迁移完成，共添加 %s 条" % add_count)
-
-            logger.debug(f"self._is_with_sites:{self._is_with_sites}")
-            logger.debug(f"add_count:{add_count}")
-            # if self._is_with_sites and add_count > 0:
-            if self._is_with_sites > 0:
-                self.__migrate_sites()
-
-        logger.debug(f"self._is_with_sub_history:{self._is_with_sub_history}")
-
-        if self._is_with_sub_history:
-            self.__migrate_sub_history()
-
-        logger.info("全部迁移结束")
 
     def __migrate_sub_history(self):
         logger.info("开始获取订阅历史 ...")
         ret_sub_history = self.__get_migrate_sub_history()
 
         if not ret_sub_history:
-            logger.warn("没有需要添加的订阅历史，结束迁移")
+            logger.warn("没有从原MP获取到订阅历史，结束订阅历史迁移")
             return
         else:
             logger.info("获取到原MP订阅历史，开始添加订阅历史")
@@ -255,7 +242,7 @@ class MigrateSub(_PluginBase):
         logger.info("获取站点管理完成")
 
         if not ret_sites:
-            logger.warn("没有需要添加的站点管理，结束迁移")
+            logger.warn("没有从原MP到站点管理信息，结束站点管理迁移")
             return
         else:
             # 清空站点管理
@@ -540,7 +527,7 @@ class MigrateSub(_PluginBase):
         """
         添加订阅
         """
-        item_name_year = f"{str(item.get('name', ''))}{str(item.get('year', ''))}"
+        item_name_year = f"{item.get('name', '')} ({item.get('year', '')})"
         # logger.debug(f"收到订阅：{item}")
 
         tmdbid = item.get("tmdbid", None)
@@ -580,7 +567,7 @@ class MigrateSub(_PluginBase):
         """
         添加完成订阅历史
         """
-        item_name_year = f"{str(item.get('name', ''))}{str(item.get('year', ''))}"
+        item_name_year = f"{item.get('name', '')} ({item.get('year', '')})"
         is_sub_history_exists = SubscribeHistoryOper.is_exists(
             self._subscribeoper._db,
             tmdbid=item.get("tmdbid", None),
@@ -588,7 +575,7 @@ class MigrateSub(_PluginBase):
             season=item.get("season", None),
         )
         if is_sub_history_exists:
-            return (False, "订阅历史已存在，跳过")
+            return (False, f"{item_name_year} 订阅历史已存在，跳过")
         else:
             # 去除kwargs中 SubscribeHistory 没有的字段
             kwargs = {k: v for k, v in item.items() if hasattr(SubscribeHistory, k)}
@@ -626,26 +613,46 @@ class MigrateSub(_PluginBase):
         """
         从原MP API URL获取信息
         """
-        res = RequestUtils().request(method="get", url=migrate_url)
+        logger.info(f"开始从原MP获取数据，【请求URL】：{migrate_url}")
 
-        if not res:
-            logger.warn("没有获取到原MP信息，请检查原MP地址和API Token是否正确")
-            return
-        logger.debug(f"获取到原MP res.status_code：{res.status_code}")
+        try:
+            res = RequestUtils().request(method="get", url=migrate_url)
+            if not res:
+                logger.error(
+                    "没有获取到原MP信息，检查原MP地址和API Token是否正确，检查浏览器打开【请求URL】查看是能获取到数据"
+                )
+                if self._is_with_sites or self._is_with_sub_history:
+                    logger.error("检查原MP已安装并启用此插件")
+                return None
+            res.raise_for_status()  # 检查响应状态码，如果不是 2xx，会抛出 HTTPError 异常
+            resData = res.json()
+            logger.debug(f"请求结果resData：{resData}")
 
-        ret = res.json()
-        if len(ret) == 0:
-            logger.info("没有需要添加的信息")
-            return
+            if isinstance(resData, dict):
+                if resData.get("success", "") is False:
+                    logger.error(f"获取原MP信息失败：{resData.get('message','')}")
+                    return None
 
-        return ret
+                if resData.get("detail", "") == "Not Found":
+                    logger.error("请检查【请求URL】是否能获取到数据")
+                    if self._is_with_sites or self._is_with_sub_history:
+                        logger.error("请确保原MP已安装并启用此插件")
+                    return
+
+            if isinstance(resData, list) and len(resData) == 0:
+                logger.info(f"没有需要添加的迁移信息：{resData}")
+                return
+
+            return resData
+        except requests.exceptions.RequestException as err:
+            logger.error(f"请求错误发生: {err}")  # 打印所有请求错误
+        return None
 
     def __get_migrate_sub_list(self):
         """
         获取订阅列表
         """
         url = self.__get_migrate_endpoint_api_url("subscribe/list")
-        logger.debug(f"获取订阅列表：{url}")
         return self.__get_migrate_info(url)
 
     def __get_migrate_sites(self):
@@ -653,7 +660,6 @@ class MigrateSub(_PluginBase):
         获取所有站点列表
         """
         url = self.__get_migrate_plugin_api_url("sites")
-        logger.debug(f"获取站点列表：{url}")
         return self.__get_migrate_info(url)
 
     def __get_migrate_sub_history(self):
@@ -661,5 +667,4 @@ class MigrateSub(_PluginBase):
         获取订阅历史
         """
         url = self.__get_migrate_plugin_api_url("sub-history")
-        logger.debug(f"获取订阅历史：{url}")
         return self.__get_migrate_info(url)
