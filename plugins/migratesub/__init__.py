@@ -1,12 +1,13 @@
 import json
-from typing import Any, Dict, Optional, Tuple, List, Self
+from typing import Any, Dict, Optional, Tuple, List, Type
+from sqlalchemy.ext.declarative import DeclarativeMeta
 import datetime
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 from threading import Event
 import requests
-from app.db import db_query
+from app.db import db_query, db_update
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.site_oper import SiteOper
 from app.db.subscribe_oper import SubscribeOper
@@ -62,6 +63,46 @@ class SubscribeHistoryOper:
         return None
 
 
+class SqlOper:
+    @staticmethod
+    @db_update
+    def update_str_note_to_json(db: Session, Table):
+        """
+        将table中note字段的字符串转为json
+        """
+        # 检查Table是否存在note字段
+        if not hasattr(Table, "note"):
+            logger.debug(f"Table {Table.__name__} 不存在 'note' 字段")
+            return
+
+        # 查询所有 note 字段不为空且为字符串的记录
+        filtered_records = (
+            db.query(Table)
+            .filter(
+                Table.note.isnot(None),
+                Table.note.startswith('"'),
+            )
+            .all()
+        )
+        logger.debug(f"filtered_records  len: {len(filtered_records)}")
+        for record in filtered_records:
+            # 更新订阅表中的note字段
+            is_success, __data = MigrateSub.str_json_loads(record.note)
+            if is_success:
+                db.query(Table).filter(Table.id == record.id).update({"note": __data})
+
+    def note_str_to_json(
+        self,
+        db: Session,
+    ):
+        """
+        对多个表中的 note 字段进行更新转换
+        """
+        tables = [Subscribe, Site]
+        for table in tables:
+            self.update_str_note_to_json(db, table)
+
+
 class MigrateSub(_PluginBase):
     # 插件名称
     plugin_name = "迁移订阅"
@@ -70,7 +111,7 @@ class MigrateSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/MigrateSub.png"
     # 插件版本
-    plugin_version = "0.0.6"
+    plugin_version = "0.0.7"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -92,6 +133,7 @@ class MigrateSub(_PluginBase):
     _scheduler = None
     _subscribeoper: SubscribeOper
     _siteOper: SiteOper
+    _sqlOper: SqlOper
 
     _migrate_from_url: str = ""
     _migrate_api_token: str = ""
@@ -100,6 +142,7 @@ class MigrateSub(_PluginBase):
     _onlyonce: bool = False
     _is_with_sites: bool = False
     _is_with_sub_history: bool = False
+    _is_with_fix_note_str_json: bool = False
 
     def init_plugin(self, config: dict[str, Any] | None = None):
         logger.debug(f"初始化插件 {self.plugin_name}: {config}")
@@ -118,6 +161,7 @@ class MigrateSub(_PluginBase):
         # 初始化逻辑
         self._subscribeoper = SubscribeOper()
         self._siteOper = SiteOper()
+        self._sqlOper = SqlOper()
 
         if config:
             self._migrate_api_token = config.get("migrate_api_token", "")
@@ -127,6 +171,9 @@ class MigrateSub(_PluginBase):
             self._onlyonce = config.get("onlyonce", False)
             self._is_with_sites = config.get("is_with_sites", False)
             self._is_with_sub_history = config.get("is_with_sub_history", False)
+            self._is_with_fix_note_str_json = config.get(
+                "is_with_fix_note_str_json", False
+            )
 
         # 停止现有任务
         self.stop_service()
@@ -163,6 +210,7 @@ class MigrateSub(_PluginBase):
             "onlyonce": self._onlyonce,
             "is_with_sites": self._is_with_sites,
             "is_with_sub_history": self._is_with_sub_history,
+            "is_with_fix_note_str_json": self._is_with_fix_note_str_json,
         }
         logger.debug(f"更新配置 {__config}")
         self.update_config(__config)
@@ -171,6 +219,14 @@ class MigrateSub(_PluginBase):
         """
         启动迁移
         """
+        if self._is_with_fix_note_str_json:
+            logger.info("将数据库表中 note 字符串转为json格式...")
+            self._sqlOper.note_str_to_json(self._subscribeoper._db)
+            # 关闭一次性开关
+            self._is_with_fix_note_str_json = False
+            self.__update_config()
+            logger.info("转换完成，结束处理")
+            return
 
         if not self._migrate_api_token:
             logger.error("未设置迁移Token，结束迁移")
@@ -254,7 +310,13 @@ class MigrateSub(_PluginBase):
             site_count = 0
             # 新增站点
             for item in ret_sites:
-                logger.debug(f"开始迁移站点：{item.get('name')}")
+                logger.info(f"开始迁移站点：{item.get('name')}")
+
+                if "note" in item:
+                    is_success, __data = MigrateSub.str_json_loads(item.get("note"))
+                    if is_success:
+                        item["note"] = __data
+                    # item.pop("id")
                 site = Site(**item)
                 site.create(self._siteOper._db)
                 site_count += 1
@@ -420,6 +482,19 @@ class MigrateSub(_PluginBase):
                             },
                             {
                                 "component": "VCol",
+                                "props": {"cols": 12, "md": 3},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "is_with_fix_note_str_json",
+                                            "label": "字符串修正一次",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
                                 "props": {"cols": 6, "md": 3},
                                 "content": [
                                     {
@@ -493,6 +568,25 @@ class MigrateSub(_PluginBase):
                                     },
                                 ],
                             },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12},
+                                "content": [
+                                    {
+                                        "component": "VAlert",
+                                        "props": {
+                                            "type": "info",
+                                            "variant": "tonal",
+                                        },
+                                        "content": [
+                                            {
+                                                "component": "span",
+                                                "text": "“字符串修正一次”选项：仅0.0.7版本前（不包含0.0.7）迁移过数据的用户，需要开启此选项立即运行一次，解决note字段未格式化转换的问题",
+                                            }
+                                        ],
+                                    },
+                                ],
+                            },
                         ],
                     },
                 ],
@@ -502,6 +596,7 @@ class MigrateSub(_PluginBase):
             "onlyonce": False,
             "is_with_sub_history": False,
             "is_with_sites": False,
+            "is_with_fix_note_str_json": False,
             "migrate_from_url": "",
             "migrate_api_token": "",
         }
@@ -523,6 +618,18 @@ class MigrateSub(_PluginBase):
                 self._scheduler = None
         except Exception as e:
             print(str(e))
+
+    @staticmethod
+    def str_json_loads(data: Any) -> tuple[bool, Any]:
+        if isinstance(data, str):
+            try:
+                data_json = json.loads(data)
+                return True, data_json
+            except json.JSONDecodeError:
+                logger.debug(f"{data} 是一个字符串，但不是有效的 JSON")
+                return False, data
+        else:
+            return False, data
 
     def __add_sub(self, item: dict) -> tuple[bool, str]:
         """
@@ -549,8 +656,19 @@ class MigrateSub(_PluginBase):
         fields_to_remove = [
             "id",
         ]
-        for field in fields_to_remove:
-            kwargs.pop(field, None)
+        for _field in fields_to_remove:
+            if _field in kwargs:
+                kwargs.pop(_field, None)
+
+        fields_to_json = [
+            # "sites",
+            "note",
+        ]
+        for _field in fields_to_json:
+            if _field in kwargs:
+                is_success, __data = MigrateSub.str_json_loads(kwargs.get(_field))
+                if is_success:
+                    kwargs[_field] = __data
 
         if not is_sub_exists:
             logger.info(f"{item_name_year} 订阅不存在，开始添加订阅")
@@ -583,14 +701,16 @@ class MigrateSub(_PluginBase):
             # 去掉主键
             if "id" in kwargs:
                 kwargs.pop("id", None)
+
             # 未启用站点迁移则去掉订阅站点管理
             if "sites" in kwargs:
                 if not self._is_with_sites:
                     kwargs.pop("sites", None)
                 else:
                     # 将字符串转为json
-                    __sites_str = item.get("sites") or "[]"
-                    kwargs["sites"] = json.loads(__sites_str)
+                    is_success, __data = MigrateSub.str_json_loads(item.get("sites"))
+                    if is_success:
+                        kwargs["sites"] = __data
 
             subHistory = SubscribeHistory(**kwargs)
             subHistory.create(self._subscribeoper._db)
