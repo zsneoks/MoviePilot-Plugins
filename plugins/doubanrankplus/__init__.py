@@ -81,7 +81,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/DouBanRankPlus.png"
     # 插件版本
-    plugin_version = "0.0.16"
+    plugin_version = "0.0.18"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -135,6 +135,7 @@ class DoubanRankPlus(_PluginBase):
     _max_sleep_time: int = 10
     _history_type: str = HistoryDataType.LATEST.value
     _is_exit_ip_rate_limit: bool = False
+    _is_only_movies: bool = False
 
     _migrate_from_url = ""
     _migrate_api_token = ""
@@ -151,13 +152,16 @@ class DoubanRankPlus(_PluginBase):
             self._proxy = config.get("proxy", False)
             self._onlyonce = config.get("onlyonce", False)
             self._is_seasons_all = config.get("is_seasons_all", True)
+            self._is_only_movies = config.get("is_only_movies", False)
 
             self._migrate_from_url = config.get("migrate_from_url", "")
             self._migrate_api_token = config.get("migrate_api_token", "")
             self._migrate_once = config.get("migrate_once", False)
 
             self._cron = (
-                config.get("cron", "").strip() if config.get("cron", "").strip() else ""
+                config.get("cron", "").strip()
+                if config.get("cron", "").strip()
+                else ""
             )
 
             self._release_year = (
@@ -175,10 +179,15 @@ class DoubanRankPlus(_PluginBase):
             __sleep_time = config.get("sleep_time", "3,10").strip()
             __sleep_time_list = re.split("[,，]", __sleep_time)
 
-            self._min_sleep_time, self._max_sleep_time = 3, 10  # default values
+            self._min_sleep_time, self._max_sleep_time = (
+                3,
+                10,
+            )  # default values
 
             if len(__sleep_time_list) == 2:
-                __min_sleep_time, __max_sleep_time = map(int, __sleep_time_list)
+                __min_sleep_time, __max_sleep_time = map(
+                    int, __sleep_time_list
+                )
                 if __max_sleep_time >= __min_sleep_time:
                     self._min_sleep_time = __min_sleep_time
                     self._max_sleep_time = __max_sleep_time
@@ -199,7 +208,9 @@ class DoubanRankPlus(_PluginBase):
             self._history_type = config.get(
                 "history_type", HistoryDataType.LATEST.value
             )
-            self._is_exit_ip_rate_limit = config.get("is_exit_ip_rate_limit", False)
+            self._is_exit_ip_rate_limit = config.get(
+                "is_exit_ip_rate_limit", False
+            )
 
         # 停止现有任务
         self.stop_service()
@@ -212,7 +223,9 @@ class DoubanRankPlus(_PluginBase):
                 self._scheduler.add_job(
                     func=self.__start_task,
                     trigger="date",
-                    run_date=datetime.datetime.now(tz=pytz.timezone(settings.TZ))
+                    run_date=datetime.datetime.now(
+                        tz=pytz.timezone(settings.TZ)
+                    )
                     + datetime.timedelta(seconds=3),
                 )
 
@@ -311,377 +324,427 @@ class DoubanRankPlus(_PluginBase):
         return []
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        return [
+        return (
+            [
+                {
+                    "component": "VForm",
+                    "content": [
+                        {
+                            "component": "VRow",
+                            "content": [
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 6, "md": 4},
+                                    "content": [
+                                        {
+                                            "component": "VSwitch",
+                                            "props": {
+                                                "model": "enabled",
+                                                "label": "启用插件",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 6, "md": 4},
+                                    "content": [
+                                        {
+                                            "component": "VSwitch",
+                                            "props": {
+                                                "model": "onlyonce",
+                                                "label": "立即运行一次",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 6, "md": 4},
+                                    "content": [
+                                        {
+                                            "component": "VSwitch",
+                                            "props": {
+                                                "model": "proxy",
+                                                "label": "使用代理服务器",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 6, "md": 4},
+                                    "content": [
+                                        {
+                                            "component": "VSwitch",
+                                            "props": {
+                                                "model": "is_seasons_all",
+                                                "label": "订阅剧集全季度",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 6, "md": 4},
+                                    "content": [
+                                        {
+                                            "component": "VSwitch",
+                                            "props": {
+                                                "model": "is_only_movies",
+                                                "label": "只订阅电影",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 6, "md": 4},
+                                    "content": [
+                                        {
+                                            "component": "VSwitch",
+                                            "props": {
+                                                "model": "is_exit_ip_rate_limit",
+                                                "label": "豆瓣限制时结束",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 6, "md": 4},
+                                    "content": [
+                                        {
+                                            "component": "VSwitch",
+                                            "props": {
+                                                "model": "clear",
+                                                "label": "清理历史记录",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 6, "md": 4},
+                                    "content": [
+                                        {
+                                            "component": "VSwitch",
+                                            "props": {
+                                                "model": "clear_unrecognized",
+                                                "label": "清理未识别历史",
+                                            },
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "component": "VRow",
+                            "content": [
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 12, "md": 6},
+                                    "content": [
+                                        {
+                                            "component": "VTextField",
+                                            "props": {
+                                                "model": "cron",
+                                                "label": "执行周期",
+                                                "placeholder": "5位cron表达式，留空自动",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 12, "md": 6},
+                                    "content": [
+                                        {
+                                            "component": "VTextField",
+                                            "props": {
+                                                "model": "sleep_time",
+                                                "label": "随机休眠时间范围",
+                                                "placeholder": "默认: 3,10。减少豆瓣访问频率。格式：最小秒数,最大秒数。",
+                                            },
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "component": "VRow",
+                            "content": [
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 12, "md": 6},
+                                    "content": [
+                                        {
+                                            "component": "VTextField",
+                                            "props": {
+                                                "model": "vote",
+                                                "label": "评分",
+                                                "placeholder": "评分大于等于该值才订阅",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 12, "md": 6},
+                                    "content": [
+                                        {
+                                            "component": "VTextField",
+                                            "props": {
+                                                "model": "release_year",
+                                                "label": "上映年份",
+                                                "placeholder": "年份大于等于该值才订阅",
+                                            },
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "component": "VRow",
+                            "props": {"cols": 12, "md": 6},
+                            "content": [
+                                {
+                                    "component": "VCol",
+                                    "content": [
+                                        {
+                                            "component": "VSelect",
+                                            "props": {
+                                                "model": "history_type",
+                                                "label": "数据面板历史显示",
+                                                "items": [
+                                                    {
+                                                        "title": f"{HistoryDataType.LATEST.value}",
+                                                        "value": f"{HistoryDataType.LATEST.value}",
+                                                    },
+                                                    {
+                                                        "title": f"{HistoryDataType.RECOGNIZED.value}",
+                                                        "value": f"{HistoryDataType.RECOGNIZED.value}",
+                                                    },
+                                                    {
+                                                        "title": f"{HistoryDataType.UNRECOGNIZED.value}",
+                                                        "value": f"{HistoryDataType.UNRECOGNIZED.value}",
+                                                    },
+                                                    {
+                                                        "title": f"{HistoryDataType.ALL.value}",
+                                                        "value": f"{HistoryDataType.ALL.value}",
+                                                    },
+                                                ],
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 12, "md": 6},
+                                    "content": [
+                                        {
+                                            "component": "VSelect",
+                                            "props": {
+                                                "chips": True,
+                                                "multiple": True,
+                                                "model": "ranks",
+                                                "label": "热门榜单",
+                                                "items": [
+                                                    {
+                                                        "title": "电影北美票房榜",
+                                                        "value": "movie-ustop",
+                                                    },
+                                                    {
+                                                        "title": "一周口碑电影榜",
+                                                        "value": "movie-weekly",
+                                                    },
+                                                    {
+                                                        "title": "实时热门电影",
+                                                        "value": "movie-real-time",
+                                                    },
+                                                    {
+                                                        "title": "热门综艺",
+                                                        "value": "show-domestic",
+                                                    },
+                                                    {
+                                                        "title": "热门电影",
+                                                        "value": "movie-hot-gaia",
+                                                    },
+                                                    {
+                                                        "title": "热门电视剧",
+                                                        "value": "tv-hot",
+                                                    },
+                                                    {
+                                                        "title": "电影TOP10",
+                                                        "value": "movie-top250",
+                                                    },
+                                                    {
+                                                        "title": "电影TOP250",
+                                                        "value": "movie-top250-full",
+                                                    },
+                                                ],
+                                            },
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "component": "VRow",
+                            "content": [
+                                {
+                                    "component": "VCol",
+                                    "content": [
+                                        {
+                                            "component": "VTextarea",
+                                            "props": {
+                                                "model": "rss_addrs",
+                                                "label": "自定义榜单地址",
+                                                "placeholder": "",
+                                            },
+                                        },
+                                        {
+                                            "component": "VAlert",
+                                            "props": {
+                                                "type": "info",
+                                                "variant": "tonal",
+                                            },
+                                            "content": [
+                                                {
+                                                    "component": "p",
+                                                    "text": "每行一个地址。地址后可选加分号 `;`，第一个分号后是自定义地址的下载路径，用#按类型分割下载路径/电影#/电视剧#/动漫；第二个分号后以@开头并以@结尾，则按类型订阅，只订阅电影：@movies@，只订阅电视剧： @tv@。如果你只需要类型则以两个分号+@作为类型选择.。注意电影英文后面是带s的，tv没有s",
+                                                },
+                                                {
+                                                    "component": "p",
+                                                    "text": "https://rsshub.app/douban/movie/ustop",
+                                                },
+                                                {
+                                                    "component": "p",
+                                                    "text": "https://rsshub.app/douban/movie/ustop;/download_to_path",
+                                                },
+                                                {
+                                                    "component": "p",
+                                                    "text": "https://rsshub.app/douban/doulist/44852852;/download_to_movies#/download_to_tv#/download_to_anime",
+                                                },
+                                                {
+                                                    "component": "p",
+                                                    "text": "https://rsshub.app/douban/movie/ustop;/download_to_path;@movies@",
+                                                },
+                                                {
+                                                    "component": "p",
+                                                    "text": "https://rsshub.app/douban/doulist/44852852;;@tv@",
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                }
+                            ],
+                        },
+                        {
+                            "component": "VRow",
+                            "content": [
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 12},
+                                    "content": [
+                                        {
+                                            "component": "VAlert",
+                                            "props": {
+                                                "type": "info",
+                                                "variant": "tonal",
+                                            },
+                                            "content": [
+                                                {
+                                                    "component": "span",
+                                                    "text": f"{self._msg_install}",
+                                                }
+                                            ],
+                                        },
+                                        {
+                                            "component": "VAlert",
+                                            "props": {
+                                                "type": "info",
+                                                "variant": "tonal",
+                                            },
+                                            "content": [
+                                                {
+                                                    "component": "span",
+                                                    "text": f"下面配置仅在需要迁移插件的历史记录和配置时，在新MP中填写，开启运行一次选项并立即运行一次。原MP不需要填写下面的配置或开启选项，{self._msg_migrate_install }",
+                                                }
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "component": "VRow",
+                            "content": [
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 12},
+                                    "content": [
+                                        {
+                                            "component": "VSwitch",
+                                            "props": {
+                                                "model": "migrate_once",
+                                                "label": "迁移配置和历史一次",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 12, "md": 6},
+                                    "content": [
+                                        {
+                                            "component": "VTextField",
+                                            "props": {
+                                                "model": "migrate_from_url",
+                                                "label": "原MP地址: 例如 http://mp.com:3001",
+                                            },
+                                        }
+                                    ],
+                                },
+                                {
+                                    "component": "VCol",
+                                    "props": {"cols": 12, "md": 6},
+                                    "content": [
+                                        {
+                                            "component": "VTextField",
+                                            "props": {
+                                                "model": "migrate_api_token",
+                                                "label": "原MP API Token",
+                                            },
+                                        }
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                }
+            ],
             {
-                "component": "VForm",
-                "content": [
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 6, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "enabled",
-                                            "label": "启用插件",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 6, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "onlyonce",
-                                            "label": "立即运行一次",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 6, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "proxy",
-                                            "label": "使用代理服务器",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 6, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "is_seasons_all",
-                                            "label": "订阅剧集全季度",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 6, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "is_exit_ip_rate_limit",
-                                            "label": "豆瓣限制时结束",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 6, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "clear",
-                                            "label": "清理历史记录",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 6, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "clear_unrecognized",
-                                            "label": "清理未识别历史",
-                                        },
-                                    }
-                                ],
-                            },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "cron",
-                                            "label": "执行周期",
-                                            "placeholder": "5位cron表达式，留空自动",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "sleep_time",
-                                            "label": "随机休眠时间范围",
-                                            "placeholder": "默认: 3,10。减少豆瓣访问频率。格式：最小秒数,最大秒数。",
-                                        },
-                                    }
-                                ],
-                            },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "vote",
-                                            "label": "评分",
-                                            "placeholder": "评分大于等于该值才订阅",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "release_year",
-                                            "label": "上映年份",
-                                            "placeholder": "年份大于等于该值才订阅",
-                                        },
-                                    }
-                                ],
-                            },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "props": {"cols": 12, "md": 6},
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "content": [
-                                    {
-                                        "component": "VSelect",
-                                        "props": {
-                                            "model": "history_type",
-                                            "label": "数据面板历史显示",
-                                            "items": [
-                                                {
-                                                    "title": f"{HistoryDataType.LATEST.value}",
-                                                    "value": f"{HistoryDataType.LATEST.value}",
-                                                },
-                                                {
-                                                    "title": f"{HistoryDataType.RECOGNIZED.value}",
-                                                    "value": f"{HistoryDataType.RECOGNIZED.value}",
-                                                },
-                                                {
-                                                    "title": f"{HistoryDataType.UNRECOGNIZED.value}",
-                                                    "value": f"{HistoryDataType.UNRECOGNIZED.value}",
-                                                },
-                                                {
-                                                    "title": f"{HistoryDataType.ALL.value}",
-                                                    "value": f"{HistoryDataType.ALL.value}",
-                                                },
-                                            ],
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VSelect",
-                                        "props": {
-                                            "chips": True,
-                                            "multiple": True,
-                                            "model": "ranks",
-                                            "label": "热门榜单",
-                                            "items": [
-                                                {
-                                                    "title": "电影北美票房榜",
-                                                    "value": "movie-ustop",
-                                                },
-                                                {
-                                                    "title": "一周口碑电影榜",
-                                                    "value": "movie-weekly",
-                                                },
-                                                {
-                                                    "title": "实时热门电影",
-                                                    "value": "movie-real-time",
-                                                },
-                                                {
-                                                    "title": "热门综艺",
-                                                    "value": "show-domestic",
-                                                },
-                                                {
-                                                    "title": "热门电影",
-                                                    "value": "movie-hot-gaia",
-                                                },
-                                                {
-                                                    "title": "热门电视剧",
-                                                    "value": "tv-hot",
-                                                },
-                                                {
-                                                    "title": "电影TOP10",
-                                                    "value": "movie-top250",
-                                                },
-                                                {
-                                                    "title": "电影TOP250",
-                                                    "value": "movie-top250-full",
-                                                },
-                                            ],
-                                        },
-                                    }
-                                ],
-                            },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "content": [
-                                    {
-                                        "component": "VTextarea",
-                                        "props": {
-                                            "model": "rss_addrs",
-                                            "label": "自定义榜单地址",
-                                            "placeholder": "每行一个地址。地址后加分号 `;`，自定义地址的下载路径。分号后用#按类型分割下载路径/电影#/电视剧#/动漫，\nhttps://rsshub.app/douban/movie/ustop\nhttps://rsshub.app/douban/movie/ustop;/download_to_path\nhttps://rsshub.app/douban/doulist/44852852;/movie_path#/tv_path#/anime_path",
-                                        },
-                                    }
-                                ],
-                            }
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VAlert",
-                                        "props": {
-                                            "type": "info",
-                                            "variant": "tonal",
-                                        },
-                                        "content": [
-                                            {
-                                                "component": "span",
-                                                "text": f"{self._msg_install}",
-                                            }
-                                        ],
-                                    },
-                                    {
-                                        "component": "VAlert",
-                                        "props": {
-                                            "type": "info",
-                                            "variant": "tonal",
-                                        },
-                                        "content": [
-                                            {
-                                                "component": "span",
-                                                "text": f"下面配置仅在需要迁移插件的历史记录和配置时，在新MP中填写，开启运行一次选项并立即运行一次。原MP不需要填写下面的配置或开启选项，{self._msg_migrate_install }",
-                                            }
-                                        ],
-                                    },
-                                ],
-                            },
-                        ],
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "migrate_once",
-                                            "label": "迁移配置和历史一次",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "migrate_from_url",
-                                            "label": "原MP地址: 例如 http://mp.com:3001",
-                                        },
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 6},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "migrate_api_token",
-                                            "label": "原MP API Token",
-                                        },
-                                    }
-                                ],
-                            },
-                        ],
-                    },
-                ],
-            }
-        ], {
-            "enabled": False,
-            "cron": "",
-            "proxy": False,
-            "onlyonce": False,
-            "vote": 0.0,
-            "ranks": [],
-            "rss_addrs": [],
-            "clear": False,
-            "clear_unrecognized": False,
-            "release_year": "0",
-            "sleep_time": "3,10",
-            "is_seasons_all": True,
-            "history_type": HistoryDataType.LATEST.value,
-            "is_exit_ip_rate_limit": False,
-            "migrate_from_url": "",
-            "migrate_api_token": "",
-            "migrate_once": False,
-        }
+                "enabled": False,
+                "cron": "",
+                "proxy": False,
+                "onlyonce": False,
+                "vote": 0.0,
+                "ranks": [],
+                "rss_addrs": [],
+                "clear": False,
+                "clear_unrecognized": False,
+                "release_year": "0",
+                "sleep_time": "3,10",
+                "is_seasons_all": True,
+                "is_only_movies": False,
+                "history_type": HistoryDataType.LATEST.value,
+                "is_exit_ip_rate_limit": False,
+                "migrate_from_url": "",
+                "migrate_api_token": "",
+                "migrate_once": False,
+            },
+        )
 
     @staticmethod
     def __get_svg_content(color: str, ds: List[str]):
@@ -778,7 +841,9 @@ class DoubanRankPlus(_PluginBase):
                                             "content": [
                                                 {
                                                     "component": "span",
-                                                    "props": {"class": "text-h6"},
+                                                    "props": {
+                                                        "class": "text-h6"
+                                                    },
                                                     "text": f"{value}",
                                                 }
                                             ],
@@ -794,7 +859,10 @@ class DoubanRankPlus(_PluginBase):
         return total_elements
 
     def __get_historys_statistics_content(
-        self, historys_total, historys_recognized_total, historys_unrecognized_total
+        self,
+        historys_total,
+        historys_recognized_total,
+        historys_unrecognized_total,
     ):
         addr_list = self._rss_addrs + [
             self._douban_address.get(rank) for rank in self._ranks
@@ -966,7 +1034,9 @@ class DoubanRankPlus(_PluginBase):
 
         return component
 
-    def __get_historys_posts_content(self, historys: List[HistoryPayload] | None):
+    def __get_historys_posts_content(
+        self, historys: List[HistoryPayload] | None
+    ):
         posts_content = []
         if not historys:
             posts_content = [
@@ -987,7 +1057,9 @@ class DoubanRankPlus(_PluginBase):
             "content": [
                 {
                     "component": "VCardTitle",
-                    "props": {"class": "pt-6 pb-2 px-0 text-base whitespace-nowrap"},
+                    "props": {
+                        "class": "pt-6 pb-2 px-0 text-base whitespace-nowrap"
+                    },
                     "content": [
                         {
                             "component": "span",
@@ -1026,7 +1098,9 @@ class DoubanRankPlus(_PluginBase):
             ]
 
         # 数据按时间降序排序
-        historys = sorted(historys, key=lambda x: x.get("time_full"), reverse=True)
+        historys = sorted(
+            historys, key=lambda x: x.get("time_full"), reverse=True
+        )
 
         history_recognized = []
         history_unrecognized = []
@@ -1041,7 +1115,9 @@ class DoubanRankPlus(_PluginBase):
             history_recognized, key=lambda x: x.get("time_full"), reverse=True
         )
         history_unrecognized = sorted(
-            history_unrecognized, key=lambda x: x.get("time_full"), reverse=True
+            history_unrecognized,
+            key=lambda x: x.get("time_full"),
+            reverse=True,
         )
 
         historys_total = len(historys)
@@ -1058,9 +1134,13 @@ class DoubanRankPlus(_PluginBase):
         elif self._history_type == HistoryDataType.ALL.value:
             historys_in_type = historys
 
-        historys_posts_content = self.__get_historys_posts_content(historys_in_type)
+        historys_posts_content = self.__get_historys_posts_content(
+            historys_in_type
+        )
         historys_statistics_content = self.__get_historys_statistics_content(
-            historys_total, historys_recognized_total, historys_unrecognized_total
+            historys_total,
+            historys_recognized_total,
+            historys_unrecognized_total,
         )
 
         # 拼装页面
@@ -1154,6 +1234,7 @@ class DoubanRankPlus(_PluginBase):
             "clear": self._clear,
             "clear_unrecognized": self._clear_unrecognized,
             "is_seasons_all": self._is_seasons_all,
+            "is_only_movies": self._is_only_movies,
             "release_year": str(self._release_year),
             "sleep_time": f"{self._min_sleep_time},{self._max_sleep_time}",
             "history_type": self._history_type,
@@ -1180,9 +1261,13 @@ class DoubanRankPlus(_PluginBase):
                 logger.info("开始从原MP迁移配置...")
                 __original_config = self.__get_migrate_config()
                 if __original_config:
-                    self._enabled = __original_config.get("enabled", self._enabled)
+                    self._enabled = __original_config.get(
+                        "enabled", self._enabled
+                    )
                     self._cron = __original_config.get("cron", self._cron)
-                    self._onlyonce = __original_config.get("onlyonce", self._onlyonce)
+                    self._onlyonce = __original_config.get(
+                        "onlyonce", self._onlyonce
+                    )
                     self._vote = __original_config.get("vote", self._vote)
                     self._ranks = __original_config.get("ranks", self._ranks)
                     self._rss_addrs = __original_config.get(
@@ -1195,14 +1280,18 @@ class DoubanRankPlus(_PluginBase):
                     self._is_seasons_all = __original_config.get(
                         "is_seasons_all", self._is_seasons_all
                     )
+                    self._is_only_movies = __original_config.get(
+                        "_is_only_movies", self._is_only_movies
+                    )
+
                     self._release_year = __original_config.get(
                         "release_year", self._release_year
                     )
                     self._min_sleep_time, self._max_sleep_time = map(
                         int,
-                        __original_config.get("sleep_time", self._min_sleep_time).split(
-                            ","
-                        ),
+                        __original_config.get(
+                            "sleep_time", self._min_sleep_time
+                        ).split(","),
                     )
                     self._history_type = __original_config.get(
                         "history_type", self._history_type
@@ -1226,7 +1315,9 @@ class DoubanRankPlus(_PluginBase):
                 self.__update_config()
                 logger.info("迁移配置和历史完成")
             else:
-                logger.error("迁移配置错误，请检查是否填写了原MP地址和原MP API Token")
+                logger.error(
+                    "迁移配置错误，请检查是否填写了原MP地址和原MP API Token"
+                )
                 return
 
         logger.info("开始刷新豆瓣榜单Plus ...")
@@ -1251,7 +1342,9 @@ class DoubanRankPlus(_PluginBase):
             if history and self._clearflag_unrecognized:
                 original_length = len(history)
                 history = [
-                    h for h in history if h.get("status") != Status.UNRECOGNIZED.value
+                    h
+                    for h in history
+                    if h.get("status") != Status.UNRECOGNIZED.value
                 ]
                 deleted_count = original_length - len(history)
                 self.save_data("history", history)
@@ -1278,18 +1371,25 @@ class DoubanRankPlus(_PluginBase):
                 continue
             try:
                 logger.info(f"获取RSS：{_addr} ...")
-                addr_result = DoubanRankPlus.__get_addr_save_paths(_addr)
-                addr = addr_result.get("addr")
-                customize_save_paths = addr_result.get("customize_save_paths")
+                addr_result = DoubanRankPlus.__get_info_addr(_addr)
+                addr = addr_result.get("addr", None)
+                customize_save_paths = addr_result.get(
+                    "customize_save_paths", None
+                )
+                subscription_type = addr_result.get("subscription_type", None)
+
                 logger.debug(f"addr::: {addr}")
                 logger.debug(f"customize_save_paths::: {customize_save_paths}")
+                logger.debug(f"subscription_type::: {subscription_type}")
 
                 rss_infos = self.__get_rss_info(addr)
                 if not rss_infos:
                     logger.error(f"RSS地址：{addr} ，未查询到数据")
                     continue
                 else:
-                    logger.info(f"RSS地址：{addr} ，共 {len(rss_infos)} 条数据")
+                    logger.info(
+                        f"RSS地址：{addr} ，共 {len(rss_infos)} 条数据"
+                    )
 
                 for rss_info_index, rss_info in enumerate(rss_infos):
                     if self._event.is_set():
@@ -1315,9 +1415,7 @@ class DoubanRankPlus(_PluginBase):
                         mtype = MediaType.MOVIE
                     elif type_str:
                         mtype = MediaType.TV
-                    unique_flag = (
-                        f"{self.plugin_config_prefix}{title}_{year}_(DB:{douban_id})"
-                    )
+                    unique_flag = f"{self.plugin_config_prefix}{title}_{year}_(DB:{douban_id})"
                     logger.debug(f"unique_flag:::{unique_flag}")
 
                     # 在集合中查找 unique_flag
@@ -1340,7 +1438,9 @@ class DoubanRankPlus(_PluginBase):
                     # 豆瓣IP限制判断
                     if douban_last_ip_rate_limit_datetime:
                         if (
-                            datetime.datetime.now(tz=pytz.timezone(settings.TZ))
+                            datetime.datetime.now(
+                                tz=pytz.timezone(settings.TZ)
+                            )
                             - douban_last_ip_rate_limit_datetime
                         ).seconds > 4200:
                             # 超过70分钟，重置
@@ -1353,7 +1453,9 @@ class DoubanRankPlus(_PluginBase):
                     if douban_id and not douban_last_ip_rate_limit_datetime:
                         # 随机休眠
                         random_sleep_time = round(
-                            random.uniform(self._min_sleep_time, self._max_sleep_time),
+                            random.uniform(
+                                self._min_sleep_time, self._max_sleep_time
+                            ),
                             1,
                         )
 
@@ -1380,17 +1482,17 @@ class DoubanRankPlus(_PluginBase):
                                     f"未识别到 {title} 的TMDB信息, 豆瓣ID: {douban_id} "
                                 )
                                 # 存储历史记录
-                                history_payload = (
-                                    DoubanRankPlus.__get_history_unrecognized_payload(
-                                        title,
-                                        unique_flag,
-                                        year,
-                                        douban_id,
-                                    )
+                                history_payload = DoubanRankPlus.__get_history_unrecognized_payload(
+                                    title,
+                                    unique_flag,
+                                    year,
+                                    douban_id,
                                 )
                                 history.append(history_payload)
                                 unique_flags.add(unique_flag)
-                                logger.debug(f"已添加到历史：{history_payload}")
+                                logger.debug(
+                                    f"已添加到历史：{history_payload}"
+                                )
                                 continue
                             elif is_ip_rate_limit:
                                 logger.warn(
@@ -1409,7 +1511,9 @@ class DoubanRankPlus(_PluginBase):
                                 )
 
                                 douban_last_ip_rate_limit_datetime = (
-                                    datetime.datetime.now(tz=pytz.timezone(settings.TZ))
+                                    datetime.datetime.now(
+                                        tz=pytz.timezone(settings.TZ)
+                                    )
                                 )
 
                                 logger.info(
@@ -1432,10 +1536,14 @@ class DoubanRankPlus(_PluginBase):
                                     )
                                     history.append(history_payload)
                                     unique_flags.add(unique_flag)
-                                    logger.debug(f"已添加到历史：{history_payload}")
+                                    logger.debug(
+                                        f"已添加到历史：{history_payload}"
+                                    )
                                     continue
                             else:
-                                tmdbinfo_media_type = tmdbinfo.get("media_type", None)
+                                tmdbinfo_media_type = tmdbinfo.get(
+                                    "media_type", None
+                                )
                                 tmdb_id = tmdbinfo.get("id", None)
 
                                 logger.debug(
@@ -1465,7 +1573,9 @@ class DoubanRankPlus(_PluginBase):
                                     )
                                     history.append(history_payload)
                                     unique_flags.add(unique_flag)
-                                    logger.debug(f"已添加到历史：{history_payload}")
+                                    logger.debug(
+                                        f"已添加到历史：{history_payload}"
+                                    )
                                     continue
 
                         else:
@@ -1481,14 +1591,14 @@ class DoubanRankPlus(_PluginBase):
                                     f"豆瓣ID {douban_id} 未识别到 {title} 的媒体信息"
                                 )
                                 # 存储历史记录
-                                history_payload = (
-                                    DoubanRankPlus.__get_history_unrecognized_payload(
-                                        title, unique_flag, year, douban_id
-                                    )
+                                history_payload = DoubanRankPlus.__get_history_unrecognized_payload(
+                                    title, unique_flag, year, douban_id
                                 )
                                 history.append(history_payload)
                                 unique_flags.add(unique_flag)
-                                logger.debug(f"已添加到历史：{history_payload}")
+                                logger.debug(
+                                    f"已添加到历史：{history_payload}"
+                                )
                                 continue
 
                     else:
@@ -1509,10 +1619,8 @@ class DoubanRankPlus(_PluginBase):
                                 f"未识别到 {title} 的媒体信息, 豆瓣ID: {douban_id}"
                             )
                             # 存储历史记录
-                            history_payload = (
-                                DoubanRankPlus.__get_history_unrecognized_payload(
-                                    title, unique_flag, year
-                                )
+                            history_payload = DoubanRankPlus.__get_history_unrecognized_payload(
+                                title, unique_flag, year
                             )
                             history.append(history_payload)
                             unique_flags.add(unique_flag)
@@ -1524,6 +1632,29 @@ class DoubanRankPlus(_PluginBase):
                     logger.info(
                         f"已识别到 {title} ({year}) 的媒体信息: {mediainfo.title_year}, 类型: {mediainfo.type}"
                     )
+
+                    if self._is_only_movies and mediainfo.type == MediaType.TV:
+                        logger.info(f"仅下载电影，跳过 {mediainfo.title_year}")
+                        continue
+
+                    if subscription_type:
+                        if (
+                            subscription_type == "movies"
+                            and mediainfo.type == MediaType.TV
+                        ):
+                            logger.info(
+                                f"仅下载电影，跳过 {mediainfo.title_year}"
+                            )
+                            continue
+                        if (
+                            subscription_type == "tv"
+                            and mediainfo.type == MediaType.MOVIE
+                        ):
+                            logger.info(
+                                f"仅下载剧集，跳过 {mediainfo.title_year}"
+                            )
+                            continue
+
                     # 保存路径
                     save_path = None
                     if customize_save_paths:
@@ -1544,11 +1675,18 @@ class DoubanRankPlus(_PluginBase):
                         and mediainfo.type == MediaType.TV
                         and number_of_seasons
                     ):
-                        logger.debug(f"meta.begin_season:::{meta.begin_season}")
+                        logger.debug(
+                            f"meta.begin_season:::{meta.begin_season}"
+                        )
                         genre_ids = mediainfo.genre_ids
                         ANIME_GENRE_ID = 16
-                        logger.debug(f"{mediainfo.title_year} genre_ids::: {genre_ids}")
-                        if ANIME_GENRE_ID in genre_ids and customize_save_paths:
+                        logger.debug(
+                            f"{mediainfo.title_year} genre_ids::: {genre_ids}"
+                        )
+                        if (
+                            ANIME_GENRE_ID in genre_ids
+                            and customize_save_paths
+                        ):
                             logger.info(
                                 f"{mediainfo.title_year} 为动漫类别, 动漫自定义保存路径为: {customize_save_paths['anime']}"
                             )
@@ -1615,10 +1753,14 @@ class DoubanRankPlus(_PluginBase):
         save_path,
     ) -> Status:
         if save_path:
-            logger.info(f"{mediainfo.title_year} 的自定义保存路径为: {save_path}")
+            logger.info(
+                f"{mediainfo.title_year} 的自定义保存路径为: {save_path}"
+            )
 
         # 判断上映年份是否符合要求
-        if self._release_year and int(mediainfo.year) < int(self._release_year):
+        if self._release_year and int(mediainfo.year) < int(
+            self._release_year
+        ):
             logger.info(
                 f"{mediainfo.title_year} 上映年份: {mediainfo.year}, 不符合要求"
             )
@@ -1663,7 +1805,9 @@ class DoubanRankPlus(_PluginBase):
         """
         try:
             if self._proxy:
-                ret = RequestUtils(timeout=240, proxies=settings.PROXY).get_res(addr)
+                ret = RequestUtils(
+                    timeout=240, proxies=settings.PROXY
+                ).get_res(addr)
             else:
                 ret = RequestUtils(timeout=240).get_res(addr)
             if not ret:
@@ -1707,7 +1851,9 @@ class DoubanRankPlus(_PluginBase):
                         # 删除所有 <img> 标签及其内容
                         description = re.sub(r"<img.*?>", "", description)
                         # 匹配4位独立数字1900-2099年
-                        found_year = re.findall(r"\b(19\d{2}|20\d{2})\b", description)
+                        found_year = re.findall(
+                            r"\b(19\d{2}|20\d{2})\b", description
+                        )
                         year = found_year[0] if found_year else None
 
                     # 类型
@@ -1732,55 +1878,136 @@ class DoubanRankPlus(_PluginBase):
             return []
 
     @staticmethod
-    def __get_addr_save_paths(addr: str) -> Dict[str, Dict[str, str] | str | None]:
+    def __get_info_addr(
+        addr: str,
+    ) -> Dict[str, Dict[str, str] | str | None]:
+        subscription_type = None
+
         # 提取分号分割的链接和保存地址
         if ";" not in addr:
-            return {"addr": addr, "customize_save_path": None}
+            return {
+                "addr": addr,
+                "customize_save_paths": None,
+                "subscription_type": None,
+            }
         else:
             logger.debug("分割订阅地址")
-            split_str = addr.split(";")
-            str_list: List[str] = []
-            for item in split_str:
-                if item.strip():
-                    str_list.append(item.strip())
+            str_list: List = addr.split(";")
+            # str_list: List[str] = []
+            # for item in split_str:
+            #     if item.strip():
+            #         str_list.append(item.strip())
             addr = str_list[0]
-            customize_save_path = str_list[1]
+            customize_save_info = str_list[1] if len(str_list) > 1 else ""
+            if len(str_list) > 2:
+                subscription_type = str_list[2]
 
             logger.debug(f"addr: {addr}")
-            logger.debug("customize_save_path:" f" {customize_save_path}")
+            logger.debug(f"customize_save_info: {customize_save_info}")
+            logger.debug(f"subscription_type: {subscription_type}")
 
-            if "#" in customize_save_path:
-                customize_save_path_list = customize_save_path.split("#")
+            if "#" in customize_save_info:
+                customize_save_info_list = customize_save_info.split("#")
 
-                logger.debug("customize_save_path_list:" f" {customize_save_path_list}")
+                logger.debug(
+                    f"customize_save_info_list: {customize_save_info_list}"
+                )
 
-                customize_save_path_movie = customize_save_path_list[0]
-                customize_save_path_tv = customize_save_path_list[1]
+                customize_save_path_movie = customize_save_info_list[0]
+                customize_save_path_tv = customize_save_info_list[1]
                 customize_save_path_anime = (
-                    customize_save_path_list[2] or customize_save_path_tv
+                    customize_save_info_list[2]
+                    if len(customize_save_info_list) > 2
+                    else customize_save_path_tv
                 )
 
                 logger.debug(
-                    f"订阅链接 {addr} 的自定义保存路径为:"
-                    f" 电影:{customize_save_path_movie},"
-                    f" 电视剧: {customize_save_path_tv},"
-                    f" 动漫: {customize_save_path_anime}"
+                    f"订阅链接 {addr} 的自定义保存路径为: "
+                    f"电影:{customize_save_path_movie}, "
+                    f"电视剧: {customize_save_path_tv}, "
+                    f"动漫: {customize_save_path_anime}"
                 )
 
             else:
-                customize_save_path_movie = customize_save_path
-                customize_save_path_tv = customize_save_path
-                customize_save_path_anime = customize_save_path
+                customize_save_path_movie = customize_save_info
+                customize_save_path_tv = customize_save_info
+                customize_save_path_anime = customize_save_info
 
                 logger.debug(
-                    f"订阅链接 {addr} 的自定义保存路径为:" f" {customize_save_path}"
+                    f"订阅链接 {addr} 的自定义保存路径为: {customize_save_info}"
                 )
+
+            if (
+                subscription_type
+                and subscription_type.startswith("@")
+                and subscription_type.endswith("@")
+            ):
+                subscription_type = subscription_type.strip("@")
+                logger.info(
+                    f"订阅链接 {addr} 的订阅类型为: {subscription_type}"
+                )
+
             customize_save_paths = {
                 "movie": customize_save_path_movie,
                 "tv": customize_save_path_tv,
                 "anime": customize_save_path_anime,
             }
-            return {"addr": addr, "customize_save_paths": customize_save_paths}
+            return {
+                "addr": addr,
+                "customize_save_paths": customize_save_paths,
+                "subscription_type": subscription_type,
+            }
+        # # 提取分号分割的链接和保存地址
+        # if ";" not in addr:
+        #     return {"addr": addr, "customize_save_path": None}
+        # else:
+        #     logger.debug("分割订阅地址")
+        #     split_str = addr.split(";")
+        #     str_list: List[str] = []
+        #     for item in split_str:
+        #         if item.strip():
+        #             str_list.append(item.strip())
+        #     addr = str_list[0]
+        #     customize_save_path = str_list[1]
+
+        #     logger.debug(f"addr: {addr}")
+        #     logger.debug("customize_save_path:" f" {customize_save_path}")
+
+        #     if "#" in customize_save_path:
+        #         customize_save_path_list = customize_save_path.split("#")
+
+        #         logger.debug(
+        #             "customize_save_path_list:" f" {customize_save_path_list}"
+        #         )
+
+        #         customize_save_path_movie = customize_save_path_list[0]
+        #         customize_save_path_tv = customize_save_path_list[1]
+        #         customize_save_path_anime = (
+        #             customize_save_path_list[2] or customize_save_path_tv
+        #         )
+
+        #         logger.debug(
+        #             f"订阅链接 {addr} 的自定义保存路径为:"
+        #             f" 电影:{customize_save_path_movie},"
+        #             f" 电视剧: {customize_save_path_tv},"
+        #             f" 动漫: {customize_save_path_anime}"
+        #         )
+
+        #     else:
+        #         customize_save_path_movie = customize_save_path
+        #         customize_save_path_tv = customize_save_path
+        #         customize_save_path_anime = customize_save_path
+
+        #         logger.debug(
+        #             f"订阅链接 {addr} 的自定义保存路径为:"
+        #             f" {customize_save_path}"
+        #         )
+        #     customize_save_paths = {
+        #         "movie": customize_save_path_movie,
+        #         "tv": customize_save_path_tv,
+        #         "anime": customize_save_path_anime,
+        #     }
+        #     return {"addr": addr, "customize_save_paths": customize_save_paths}
 
     @staticmethod
     def __get_history_unrecognized_payload(
@@ -1802,12 +2029,12 @@ class DoubanRankPlus(_PluginBase):
             "overview": "",
             "tmdbid": "0",
             "doubanid": doubanid or "0",
-            "time": datetime.datetime.now(tz=pytz.timezone(settings.TZ)).strftime(
-                "%m-%d %H:%M"
-            ),
-            "time_full": datetime.datetime.now(tz=pytz.timezone(settings.TZ)).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
+            "time": datetime.datetime.now(
+                tz=pytz.timezone(settings.TZ)
+            ).strftime("%m-%d %H:%M"),
+            "time_full": datetime.datetime.now(
+                tz=pytz.timezone(settings.TZ)
+            ).strftime("%Y-%m-%d %H:%M:%S"),
             "vote": 0.0,
         }
         return history_payload
@@ -1837,17 +2064,25 @@ class DoubanRankPlus(_PluginBase):
         media_type = (
             media_type
             if isinstance(media_type, MediaType)
-            else MediaType.MOVIE if doubaninfo.get("type") == "movie" else MediaType.TV
+            else (
+                MediaType.MOVIE
+                if doubaninfo.get("type") == "movie"
+                else MediaType.TV
+            )
         )
         meta.type = media_type
 
         # 匹配TMDB信息
         if original_title:
             meta_names = list(
-                dict.fromkeys([original_title, title, meta.cn_name, meta.en_name])
+                dict.fromkeys(
+                    [original_title, title, meta.cn_name, meta.en_name]
+                )
             )
         else:
-            meta_names = list(dict.fromkeys([title, meta.cn_name, meta.en_name]))
+            meta_names = list(
+                dict.fromkeys([title, meta.cn_name, meta.en_name])
+            )
 
         # 移除空值
         meta_names = [name for name in meta_names if name]
@@ -1856,7 +2091,10 @@ class DoubanRankPlus(_PluginBase):
 
         for name in meta_names:
             tmdbinfo = self.mediachain.match_tmdbinfo(
-                name=name, year=meta.year, mtype=__mtype, season=meta.begin_season
+                name=name,
+                year=meta.year,
+                mtype=__mtype,
+                season=meta.begin_season,
             )
             if tmdbinfo:
                 # 合季季后返回
@@ -1927,14 +2165,18 @@ class DoubanRankPlus(_PluginBase):
                     "没有获取到原MP信息，检查原MP地址和API Token是否正确，检查浏览器打开【请求URL】查看是能获取到数据"
                 )
                 if self._migrate_once:
-                    logger.error(f"{self._msg_migrate_install }。{self._msg_install}")
+                    logger.error(
+                        f"{self._msg_migrate_install }。{self._msg_install}"
+                    )
                 return None
             res.raise_for_status()  # 检查响应状态码，如果不是 2xx，会抛出 HTTPError 异常
             resData = res.json()
 
             if isinstance(resData, dict):
                 if resData.get("success", "") is False:
-                    logger.error(f"获取原MP信息失败：{resData.get('message','')}")
+                    logger.error(
+                        f"获取原MP信息失败：{resData.get('message','')}"
+                    )
                     return None
 
                 if resData.get("detail", "") == "Not Found":
