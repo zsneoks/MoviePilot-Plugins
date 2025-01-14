@@ -111,7 +111,7 @@ class MigrateSub(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/MigrateSub.png"
     # 插件版本
-    plugin_version = "0.0.7"
+    plugin_version = "0.0.8"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -635,11 +635,32 @@ class MigrateSub(_PluginBase):
         """
         添加订阅
         """
-        item_name_year = f"{item.get('name', '')} ({item.get('year', '')})"
+        item_name = item.get("name", "")
+        item_year = item.get("year", "")
+
+        item_name_year = f"{item_name} ({item_year})"
 
         tmdbid = item.get("tmdbid", None)
         doubanid = str(item.get("doubanid", None))
         season = item.get("season", None)
+
+        if not item_name:
+            item_info_id = None
+            if tmdbid or doubanid:
+                item_info_id = tmdbid if tmdbid else doubanid
+            if item_info_id is None:
+                logger.debug(f"无法添加，没有获取到 item 信息：{item}")
+                logger.error(
+                    f"无法添加，没有找到 item 信息：name：{item_name}，tmdbid: {tmdbid} 或 doubanid: {doubanid}"
+                )
+                return (False, "缺少必要信息，无法添加订阅")
+
+            logger.error(f"{item_info_id} 无法添加，没有获取到影片名字")
+            return (False, f"{item_info_id} 无法添加，没有获取到影片名字")
+
+        if not tmdbid and not doubanid:
+            logger.error(f"{item_name_year} 无法添加，没有获取到tmdbid或doubanid")
+            return (False, f"{item_name_year} 无法添加，没有获取到tmdbid或doubanid")
 
         is_sub_exists = self._subscribeoper.exists(
             tmdbid=tmdbid, doubanid=doubanid, season=season
