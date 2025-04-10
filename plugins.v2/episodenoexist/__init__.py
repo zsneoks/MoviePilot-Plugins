@@ -139,7 +139,7 @@ class EpisodeNoExist(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/EpisodeNoExist.png"
     # 插件版本
-    plugin_version = "2.0.3"
+    plugin_version = "2.0.4"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -1395,7 +1395,10 @@ class EpisodeNoExist(_PluginBase):
         mp_domain = settings.MP_DOMAIN()
         link = f"#/media?mediaid=tmdb:{tmdbid}&type={MediaType.TV.value}"
         if mp_domain:
-            link = f"{mp_domain}/{link}"
+            if mp_domain.endswith("/"):
+                link = f"{mp_domain}{link}"
+            else:
+                link = f"{mp_domain}/{link}"
 
         unique = history.get("unique")
 
