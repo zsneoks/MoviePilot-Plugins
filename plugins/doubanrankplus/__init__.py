@@ -81,7 +81,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/DouBanRankPlus.png"
     # 插件版本
-    plugin_version = "0.0.18"
+    plugin_version = "0.0.19"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -159,9 +159,7 @@ class DoubanRankPlus(_PluginBase):
             self._migrate_once = config.get("migrate_once", False)
 
             self._cron = (
-                config.get("cron", "").strip()
-                if config.get("cron", "").strip()
-                else ""
+                config.get("cron", "").strip() if config.get("cron", "").strip() else ""
             )
 
             self._release_year = (
@@ -185,9 +183,7 @@ class DoubanRankPlus(_PluginBase):
             )  # default values
 
             if len(__sleep_time_list) == 2:
-                __min_sleep_time, __max_sleep_time = map(
-                    int, __sleep_time_list
-                )
+                __min_sleep_time, __max_sleep_time = map(int, __sleep_time_list)
                 if __max_sleep_time >= __min_sleep_time:
                     self._min_sleep_time = __min_sleep_time
                     self._max_sleep_time = __max_sleep_time
@@ -208,9 +204,7 @@ class DoubanRankPlus(_PluginBase):
             self._history_type = config.get(
                 "history_type", HistoryDataType.LATEST.value
             )
-            self._is_exit_ip_rate_limit = config.get(
-                "is_exit_ip_rate_limit", False
-            )
+            self._is_exit_ip_rate_limit = config.get("is_exit_ip_rate_limit", False)
 
         # 停止现有任务
         self.stop_service()
@@ -223,9 +217,7 @@ class DoubanRankPlus(_PluginBase):
                 self._scheduler.add_job(
                     func=self.__start_task,
                     trigger="date",
-                    run_date=datetime.datetime.now(
-                        tz=pytz.timezone(settings.TZ)
-                    )
+                    run_date=datetime.datetime.now(tz=pytz.timezone(settings.TZ))
                     + datetime.timedelta(seconds=3),
                 )
 
@@ -841,9 +833,7 @@ class DoubanRankPlus(_PluginBase):
                                             "content": [
                                                 {
                                                     "component": "span",
-                                                    "props": {
-                                                        "class": "text-h6"
-                                                    },
+                                                    "props": {"class": "text-h6"},
                                                     "text": f"{value}",
                                                 }
                                             ],
@@ -1034,9 +1024,7 @@ class DoubanRankPlus(_PluginBase):
 
         return component
 
-    def __get_historys_posts_content(
-        self, historys: List[HistoryPayload] | None
-    ):
+    def __get_historys_posts_content(self, historys: List[HistoryPayload] | None):
         posts_content = []
         if not historys:
             posts_content = [
@@ -1057,9 +1045,7 @@ class DoubanRankPlus(_PluginBase):
             "content": [
                 {
                     "component": "VCardTitle",
-                    "props": {
-                        "class": "pt-6 pb-2 px-0 text-base whitespace-nowrap"
-                    },
+                    "props": {"class": "pt-6 pb-2 px-0 text-base whitespace-nowrap"},
                     "content": [
                         {
                             "component": "span",
@@ -1098,9 +1084,7 @@ class DoubanRankPlus(_PluginBase):
             ]
 
         # 数据按时间降序排序
-        historys = sorted(
-            historys, key=lambda x: x.get("time_full"), reverse=True
-        )
+        historys = sorted(historys, key=lambda x: x.get("time_full"), reverse=True)
 
         history_recognized = []
         history_unrecognized = []
@@ -1134,9 +1118,7 @@ class DoubanRankPlus(_PluginBase):
         elif self._history_type == HistoryDataType.ALL.value:
             historys_in_type = historys
 
-        historys_posts_content = self.__get_historys_posts_content(
-            historys_in_type
-        )
+        historys_posts_content = self.__get_historys_posts_content(historys_in_type)
         historys_statistics_content = self.__get_historys_statistics_content(
             historys_total,
             historys_recognized_total,
@@ -1261,13 +1243,9 @@ class DoubanRankPlus(_PluginBase):
                 logger.info("开始从原MP迁移配置...")
                 __original_config = self.__get_migrate_config()
                 if __original_config:
-                    self._enabled = __original_config.get(
-                        "enabled", self._enabled
-                    )
+                    self._enabled = __original_config.get("enabled", self._enabled)
                     self._cron = __original_config.get("cron", self._cron)
-                    self._onlyonce = __original_config.get(
-                        "onlyonce", self._onlyonce
-                    )
+                    self._onlyonce = __original_config.get("onlyonce", self._onlyonce)
                     self._vote = __original_config.get("vote", self._vote)
                     self._ranks = __original_config.get("ranks", self._ranks)
                     self._rss_addrs = __original_config.get(
@@ -1289,9 +1267,9 @@ class DoubanRankPlus(_PluginBase):
                     )
                     self._min_sleep_time, self._max_sleep_time = map(
                         int,
-                        __original_config.get(
-                            "sleep_time", self._min_sleep_time
-                        ).split(","),
+                        __original_config.get("sleep_time", self._min_sleep_time).split(
+                            ","
+                        ),
                     )
                     self._history_type = __original_config.get(
                         "history_type", self._history_type
@@ -1315,9 +1293,7 @@ class DoubanRankPlus(_PluginBase):
                 self.__update_config()
                 logger.info("迁移配置和历史完成")
             else:
-                logger.error(
-                    "迁移配置错误，请检查是否填写了原MP地址和原MP API Token"
-                )
+                logger.error("迁移配置错误，请检查是否填写了原MP地址和原MP API Token")
                 return
 
         logger.info("开始刷新豆瓣榜单Plus ...")
@@ -1342,9 +1318,7 @@ class DoubanRankPlus(_PluginBase):
             if history and self._clearflag_unrecognized:
                 original_length = len(history)
                 history = [
-                    h
-                    for h in history
-                    if h.get("status") != Status.UNRECOGNIZED.value
+                    h for h in history if h.get("status") != Status.UNRECOGNIZED.value
                 ]
                 deleted_count = original_length - len(history)
                 self.save_data("history", history)
@@ -1373,9 +1347,7 @@ class DoubanRankPlus(_PluginBase):
                 logger.info(f"获取RSS：{_addr} ...")
                 addr_result = DoubanRankPlus.__get_info_addr(_addr)
                 addr = addr_result.get("addr", None)
-                customize_save_paths = addr_result.get(
-                    "customize_save_paths", None
-                )
+                customize_save_paths = addr_result.get("customize_save_paths", None)
                 subscription_type = addr_result.get("subscription_type", None)
 
                 logger.debug(f"addr::: {addr}")
@@ -1387,9 +1359,7 @@ class DoubanRankPlus(_PluginBase):
                     logger.error(f"RSS地址：{addr} ，未查询到数据")
                     continue
                 else:
-                    logger.info(
-                        f"RSS地址：{addr} ，共 {len(rss_infos)} 条数据"
-                    )
+                    logger.info(f"RSS地址：{addr} ，共 {len(rss_infos)} 条数据")
 
                 for rss_info_index, rss_info in enumerate(rss_infos):
                     if self._event.is_set():
@@ -1415,7 +1385,9 @@ class DoubanRankPlus(_PluginBase):
                         mtype = MediaType.MOVIE
                     elif type_str:
                         mtype = MediaType.TV
-                    unique_flag = f"{self.plugin_config_prefix}{title}_{year}_(DB:{douban_id})"
+                    unique_flag = (
+                        f"{self.plugin_config_prefix}{title}_{year}_(DB:{douban_id})"
+                    )
                     logger.debug(f"unique_flag:::{unique_flag}")
 
                     # 在集合中查找 unique_flag
@@ -1433,14 +1405,12 @@ class DoubanRankPlus(_PluginBase):
                     meta.year = year
                     if mtype:
                         meta.type = mtype
-                    logger.debug(f"meta from MetaInfo:::{meta}")
+                    logger.debug(f"MetaInfo meta from rss_info title:::{meta}")
 
                     # 豆瓣IP限制判断
                     if douban_last_ip_rate_limit_datetime:
                         if (
-                            datetime.datetime.now(
-                                tz=pytz.timezone(settings.TZ)
-                            )
+                            datetime.datetime.now(tz=pytz.timezone(settings.TZ))
                             - douban_last_ip_rate_limit_datetime
                         ).seconds > 4200:
                             # 超过70分钟，重置
@@ -1453,9 +1423,7 @@ class DoubanRankPlus(_PluginBase):
                     if douban_id and not douban_last_ip_rate_limit_datetime:
                         # 随机休眠
                         random_sleep_time = round(
-                            random.uniform(
-                                self._min_sleep_time, self._max_sleep_time
-                            ),
+                            random.uniform(self._min_sleep_time, self._max_sleep_time),
                             1,
                         )
 
@@ -1482,17 +1450,17 @@ class DoubanRankPlus(_PluginBase):
                                     f"未识别到 {title} 的TMDB信息, 豆瓣ID: {douban_id} "
                                 )
                                 # 存储历史记录
-                                history_payload = DoubanRankPlus.__get_history_unrecognized_payload(
-                                    title,
-                                    unique_flag,
-                                    year,
-                                    douban_id,
+                                history_payload = (
+                                    DoubanRankPlus.__get_history_unrecognized_payload(
+                                        title,
+                                        unique_flag,
+                                        year,
+                                        douban_id,
+                                    )
                                 )
                                 history.append(history_payload)
                                 unique_flags.add(unique_flag)
-                                logger.debug(
-                                    f"已添加到历史：{history_payload}"
-                                )
+                                logger.debug(f"已添加到历史：{history_payload}")
                                 continue
                             elif is_ip_rate_limit:
                                 logger.warn(
@@ -1511,9 +1479,7 @@ class DoubanRankPlus(_PluginBase):
                                 )
 
                                 douban_last_ip_rate_limit_datetime = (
-                                    datetime.datetime.now(
-                                        tz=pytz.timezone(settings.TZ)
-                                    )
+                                    datetime.datetime.now(tz=pytz.timezone(settings.TZ))
                                 )
 
                                 logger.info(
@@ -1536,14 +1502,10 @@ class DoubanRankPlus(_PluginBase):
                                     )
                                     history.append(history_payload)
                                     unique_flags.add(unique_flag)
-                                    logger.debug(
-                                        f"已添加到历史：{history_payload}"
-                                    )
+                                    logger.debug(f"已添加到历史：{history_payload}")
                                     continue
                             else:
-                                tmdbinfo_media_type = tmdbinfo.get(
-                                    "media_type", None
-                                )
+                                tmdbinfo_media_type = tmdbinfo.get("media_type", None)
                                 tmdb_id = tmdbinfo.get("id", None)
 
                                 logger.debug(
@@ -1573,9 +1535,7 @@ class DoubanRankPlus(_PluginBase):
                                     )
                                     history.append(history_payload)
                                     unique_flags.add(unique_flag)
-                                    logger.debug(
-                                        f"已添加到历史：{history_payload}"
-                                    )
+                                    logger.debug(f"已添加到历史：{history_payload}")
                                     continue
 
                         else:
@@ -1591,14 +1551,14 @@ class DoubanRankPlus(_PluginBase):
                                     f"豆瓣ID {douban_id} 未识别到 {title} 的媒体信息"
                                 )
                                 # 存储历史记录
-                                history_payload = DoubanRankPlus.__get_history_unrecognized_payload(
-                                    title, unique_flag, year, douban_id
+                                history_payload = (
+                                    DoubanRankPlus.__get_history_unrecognized_payload(
+                                        title, unique_flag, year, douban_id
+                                    )
                                 )
                                 history.append(history_payload)
                                 unique_flags.add(unique_flag)
-                                logger.debug(
-                                    f"已添加到历史：{history_payload}"
-                                )
+                                logger.debug(f"已添加到历史：{history_payload}")
                                 continue
 
                     else:
@@ -1619,8 +1579,10 @@ class DoubanRankPlus(_PluginBase):
                                 f"未识别到 {title} 的媒体信息, 豆瓣ID: {douban_id}"
                             )
                             # 存储历史记录
-                            history_payload = DoubanRankPlus.__get_history_unrecognized_payload(
-                                title, unique_flag, year
+                            history_payload = (
+                                DoubanRankPlus.__get_history_unrecognized_payload(
+                                    title, unique_flag, year
+                                )
                             )
                             history.append(history_payload)
                             unique_flags.add(unique_flag)
@@ -1642,17 +1604,13 @@ class DoubanRankPlus(_PluginBase):
                             subscription_type == "movies"
                             and mediainfo.type == MediaType.TV
                         ):
-                            logger.info(
-                                f"仅下载电影，跳过 {mediainfo.title_year}"
-                            )
+                            logger.info(f"仅下载电影，跳过 {mediainfo.title_year}")
                             continue
                         if (
                             subscription_type == "tv"
                             and mediainfo.type == MediaType.MOVIE
                         ):
-                            logger.info(
-                                f"仅下载剧集，跳过 {mediainfo.title_year}"
-                            )
+                            logger.info(f"仅下载剧集，跳过 {mediainfo.title_year}")
                             continue
 
                     # 保存路径
@@ -1675,18 +1633,11 @@ class DoubanRankPlus(_PluginBase):
                         and mediainfo.type == MediaType.TV
                         and number_of_seasons
                     ):
-                        logger.debug(
-                            f"meta.begin_season:::{meta.begin_season}"
-                        )
+                        logger.debug(f"meta.begin_season:::{meta.begin_season}")
                         genre_ids = mediainfo.genre_ids
                         ANIME_GENRE_ID = 16
-                        logger.debug(
-                            f"{mediainfo.title_year} genre_ids::: {genre_ids}"
-                        )
-                        if (
-                            ANIME_GENRE_ID in genre_ids
-                            and customize_save_paths
-                        ):
+                        logger.debug(f"{mediainfo.title_year} genre_ids::: {genre_ids}")
+                        if ANIME_GENRE_ID in genre_ids and customize_save_paths:
                             logger.info(
                                 f"{mediainfo.title_year} 为动漫类别, 动漫自定义保存路径为: {customize_save_paths['anime']}"
                             )
@@ -1753,14 +1704,10 @@ class DoubanRankPlus(_PluginBase):
         save_path,
     ) -> Status:
         if save_path:
-            logger.info(
-                f"{mediainfo.title_year} 的自定义保存路径为: {save_path}"
-            )
+            logger.info(f"{mediainfo.title_year} 的自定义保存路径为: {save_path}")
 
         # 判断上映年份是否符合要求
-        if self._release_year and int(mediainfo.year) < int(
-            self._release_year
-        ):
+        if self._release_year and int(mediainfo.year) < int(self._release_year):
             logger.info(
                 f"{mediainfo.title_year} 上映年份: {mediainfo.year}, 不符合要求"
             )
@@ -1805,9 +1752,7 @@ class DoubanRankPlus(_PluginBase):
         """
         try:
             if self._proxy:
-                ret = RequestUtils(
-                    timeout=240, proxies=settings.PROXY
-                ).get_res(addr)
+                ret = RequestUtils(timeout=240, proxies=settings.PROXY).get_res(addr)
             else:
                 ret = RequestUtils(timeout=240).get_res(addr)
             if not ret:
@@ -1851,9 +1796,7 @@ class DoubanRankPlus(_PluginBase):
                         # 删除所有 <img> 标签及其内容
                         description = re.sub(r"<img.*?>", "", description)
                         # 匹配4位独立数字1900-2099年
-                        found_year = re.findall(
-                            r"\b(19\d{2}|20\d{2})\b", description
-                        )
+                        found_year = re.findall(r"\b(19\d{2}|20\d{2})\b", description)
                         year = found_year[0] if found_year else None
 
                     # 类型
@@ -1909,9 +1852,7 @@ class DoubanRankPlus(_PluginBase):
             if "#" in customize_save_info:
                 customize_save_info_list = customize_save_info.split("#")
 
-                logger.debug(
-                    f"customize_save_info_list: {customize_save_info_list}"
-                )
+                logger.debug(f"customize_save_info_list: {customize_save_info_list}")
 
                 customize_save_path_movie = customize_save_info_list[0]
                 customize_save_path_tv = customize_save_info_list[1]
@@ -1943,9 +1884,7 @@ class DoubanRankPlus(_PluginBase):
                 and subscription_type.endswith("@")
             ):
                 subscription_type = subscription_type.strip("@")
-                logger.info(
-                    f"订阅链接 {addr} 的订阅类型为: {subscription_type}"
-                )
+                logger.info(f"订阅链接 {addr} 的订阅类型为: {subscription_type}")
 
             customize_save_paths = {
                 "movie": customize_save_path_movie,
@@ -2029,12 +1968,12 @@ class DoubanRankPlus(_PluginBase):
             "overview": "",
             "tmdbid": "0",
             "doubanid": doubanid or "0",
-            "time": datetime.datetime.now(
-                tz=pytz.timezone(settings.TZ)
-            ).strftime("%m-%d %H:%M"),
-            "time_full": datetime.datetime.now(
-                tz=pytz.timezone(settings.TZ)
-            ).strftime("%Y-%m-%d %H:%M:%S"),
+            "time": datetime.datetime.now(tz=pytz.timezone(settings.TZ)).strftime(
+                "%m-%d %H:%M"
+            ),
+            "time_full": datetime.datetime.now(tz=pytz.timezone(settings.TZ)).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
             "vote": 0.0,
         }
         return history_payload
@@ -2051,10 +1990,13 @@ class DoubanRankPlus(_PluginBase):
         if is_ip_rate_limit or not doubaninfo:
             return None, is_ip_rate_limit
 
-        # 优先使用原标题匹配
+        # 优先使用title匹配, original_title无法识别到季数
         title = doubaninfo.get("title", "")
         original_title = doubaninfo.get("original_title", "")
-        meta = MetaInfo(title=original_title if original_title else title)
+        # meta = MetaInfo(title=original_title if original_title else title)
+        meta = MetaInfo(title=title if title else original_title)
+
+        logger.debug(f"MetaInfo meta from original_title or title:::{meta}")
 
         # 年份
         meta.year = doubaninfo.get("year")
@@ -2065,9 +2007,7 @@ class DoubanRankPlus(_PluginBase):
             media_type
             if isinstance(media_type, MediaType)
             else (
-                MediaType.MOVIE
-                if doubaninfo.get("type") == "movie"
-                else MediaType.TV
+                MediaType.MOVIE if doubaninfo.get("type") == "movie" else MediaType.TV
             )
         )
         meta.type = media_type
@@ -2075,27 +2015,49 @@ class DoubanRankPlus(_PluginBase):
         # 匹配TMDB信息
         if original_title:
             meta_names = list(
-                dict.fromkeys(
-                    [original_title, title, meta.cn_name, meta.en_name]
-                )
+                dict.fromkeys([original_title, title, meta.cn_name, meta.en_name])
             )
         else:
-            meta_names = list(
-                dict.fromkeys([title, meta.cn_name, meta.en_name])
-            )
+            meta_names = list(dict.fromkeys([title, meta.cn_name, meta.en_name]))
 
         # 移除空值
         meta_names = [name for name in meta_names if name]
 
         __mtype = mtype if mtype and mtype != MediaType.UNKNOWN else meta.type
+        __begin_season = meta.begin_season if meta.begin_season else None
+        __is_match_season_from_name = False
 
         for name in meta_names:
+            if __is_match_season_from_name:
+                # 如果已经从名字匹配到季数，则直接修正名字
+                name = re.sub(
+                    r"\d+$", "", name
+                ).strip()  # 将匹配到的数字从 name 中移除，并去掉多余的空格
+            elif __mtype == MediaType.TV and not __begin_season:
+                # 如果季为空且是电视剧，则匹配获取 name 以数字结束的内容作为季数
+                __matchSeason = re.search(r"\d+$", name)
+                if __matchSeason:
+                    __begin_season = int(
+                        __matchSeason.group()
+                    )  # 提取匹配内容并转换为 int
+                    name = re.sub(
+                        r"\d+$", "", name
+                    ).strip()  # 将匹配到的数字从 name 中移除，并去掉多余的空格
+                    __is_match_season_from_name = True
+                    logger.debug("从名字匹配到季数：%s", __begin_season)
+
+            logger.debug(f"match_tmdbinfo name:::{name}")
+            logger.debug(f"match_tmdbinfo mtype:::{__mtype}")
+            logger.debug(f"match_tmdbinfo meta.year:::{meta.year}")
+            logger.debug(f"match_tmdbinfo begin_season:::{__begin_season}")
             tmdbinfo = self.mediachain.match_tmdbinfo(
                 name=name,
                 year=meta.year,
                 mtype=__mtype,
-                season=meta.begin_season,
+                season=__begin_season,
             )
+            # logger.debug(f"tmdbinfo:::{tmdbinfo}")
+
             if tmdbinfo:
                 # 合季季后返回
                 tmdbinfo["season"] = meta.begin_season
@@ -2165,18 +2127,14 @@ class DoubanRankPlus(_PluginBase):
                     "没有获取到原MP信息，检查原MP地址和API Token是否正确，检查浏览器打开【请求URL】查看是能获取到数据"
                 )
                 if self._migrate_once:
-                    logger.error(
-                        f"{self._msg_migrate_install }。{self._msg_install}"
-                    )
+                    logger.error(f"{self._msg_migrate_install }。{self._msg_install}")
                 return None
             res.raise_for_status()  # 检查响应状态码，如果不是 2xx，会抛出 HTTPError 异常
             resData = res.json()
 
             if isinstance(resData, dict):
                 if resData.get("success", "") is False:
-                    logger.error(
-                        f"获取原MP信息失败：{resData.get('message','')}"
-                    )
+                    logger.error(f"获取原MP信息失败：{resData.get('message','')}")
                     return None
 
                 if resData.get("detail", "") == "Not Found":
