@@ -12,7 +12,7 @@ from apscheduler.triggers.cron import CronTrigger
 from enum import Enum
 
 from app import schemas
-from app.chain.download import DownloadChain
+from app.chain.download import DownloadChain, MediaInfo, MetaBase
 from app.chain.media import MediaChain
 from app.chain.subscribe import SubscribeChain
 from app.core.config import settings
@@ -81,7 +81,7 @@ class DoubanRankPlus(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/DouBanRankPlus.png"
     # 插件版本
-    plugin_version = "0.0.19"
+    plugin_version = "0.0.20"
     # 插件作者
     plugin_author = "boeto"
     # 作者主页
@@ -1627,11 +1627,21 @@ class DoubanRankPlus(_PluginBase):
                     # 已识别状态默认值
                     status = Status.UNCATEGORIZED
 
+                    # 查询缺失的媒体信息
+                    is_exist_all, missing_season = self.__check_lib_exists(
+                        meta, mediainfo, mediainfo.type == MediaType.MOVIE
+                    )
+
+                    logger.debug(
+                        f"is_exist_all:::{is_exist_all}, missing_season:::{missing_season}"
+                    )
+
                     # 如果是剧集且开启全季订阅，则轮流下载每一季
                     if (
                         self._is_seasons_all
                         and mediainfo.type == MediaType.TV
                         and number_of_seasons
+                        and not is_exist_all
                     ):
                         logger.debug(f"meta.begin_season:::{meta.begin_season}")
                         genre_ids = mediainfo.genre_ids
@@ -1652,6 +1662,8 @@ class DoubanRankPlus(_PluginBase):
                                 mediainfo=mediainfo,
                                 season=i,
                                 save_path=save_path,
+                                is_exist_all=is_exist_all,
+                                missing_season=missing_season,
                             )
                             if not meta.begin_season or i == meta.begin_season:
                                 status = __status
@@ -1661,6 +1673,8 @@ class DoubanRankPlus(_PluginBase):
                             mediainfo=mediainfo,
                             season=meta.begin_season,
                             save_path=save_path,
+                            is_exist_all=is_exist_all,
+                            missing_season=missing_season,
                         )
 
                     # 存储历史记录
@@ -1696,13 +1710,66 @@ class DoubanRankPlus(_PluginBase):
 
         logger.info("所有榜单RSS刷新完成")
 
+    def __check_lib_exists(
+        self,
+        meta: MetaBase,
+        mediainfo: MediaInfo,
+        is_movie: bool,
+    ) -> Tuple[bool, list[int] | None]:
+        """
+        检查媒体库缺失
+        @return: True: 媒体库中已存在 False: 媒体库中不存在; list[int]: 缺失的季
+        """
+        # 查询缺失的媒体信息
+        is_exist_flag, no_exist_details = self.downloadchain.get_no_exists_info(
+            meta=meta, mediainfo=mediainfo
+        )
+        logger.debug(f"is_exist_flag:::{is_exist_flag}")
+        logger.debug(f"no_exist_detail:::{no_exist_details}")
+
+        if is_exist_flag:
+            logger.info(f"{mediainfo.title_year} 媒体库中已存在")
+            return True, None
+        else:
+            if is_movie:
+                return False, None
+            else:
+                # 检查缺失的季
+                __missing_seasons = []
+                for _media_id, seasons in no_exist_details.items():
+                    for season, _season_details in seasons.items():
+                        if season not in __missing_seasons:
+                            __missing_seasons.append(season)
+                missing_seasons = (
+                    __missing_seasons if len(__missing_seasons) > 0 else None
+                )
+                logger.debug(f"缺失季: {missing_seasons}")
+                return missing_seasons is None, missing_seasons
+
     def __checke_and_add_subscribe(
         self,
-        meta,
-        mediainfo,
-        season,
+        meta: MetaBase,
+        mediainfo: MediaInfo,
+        season: int,
         save_path,
+        is_exist_all: bool,
+        missing_season: list[int] | None,
     ) -> Status:
+        if is_exist_all:
+            logger.debug(f"{mediainfo.title_year} 媒体库中已存在，跳过订阅")
+            return Status.MEDIA_EXISTS
+        else:
+            if missing_season:
+                logger.debug(
+                    f"{mediainfo.title_year} 缺失季: {missing_season}，当前尝试添加季：{season}",
+                )
+
+            if missing_season and season is not None and season not in missing_season:
+                logger.info(
+                    f"{mediainfo.title_year} 第 {season} 季媒体库中已存在，跳过订阅"
+                )
+                return Status.MEDIA_EXISTS
+
         if save_path:
             logger.info(f"{mediainfo.title_year} 的自定义保存路径为: {save_path}")
 
@@ -1720,12 +1787,13 @@ class DoubanRankPlus(_PluginBase):
             return Status.RATING_NOT_MATCH
 
         # 查询缺失的媒体信息
-        exist_flag, _ = self.downloadchain.get_no_exists_info(
-            meta=meta, mediainfo=mediainfo
-        )
-        if exist_flag:
-            logger.info(f"{mediainfo.title_year} 媒体库中已存在")
-            return Status.MEDIA_EXISTS
+        # exist_flag, _exist_details = self.downloadchain.get_no_exists_info(
+        #     meta=meta, mediainfo=mediainfo
+        # )
+
+        # if exist_flag:
+        #     logger.info(f"{mediainfo.title_year} 媒体库中已存在")
+        #     return Status.MEDIA_EXISTS
 
         # 判断用户是否已经添加订阅
         if self.subscribechain.exists(mediainfo=mediainfo, meta=meta):
@@ -1743,7 +1811,10 @@ class DoubanRankPlus(_PluginBase):
             username=self.plugin_name,
             save_path=save_path,
         )
-        logger.info(f"已添加订阅: {mediainfo.title_year}")
+        if season:
+            logger.info(f"已添加订阅: {mediainfo.title_year} 第 {season} 季")
+        else:
+            logger.info(f"已添加订阅: {mediainfo.title_year} ")
         return Status.SUBSCRIPTION_ADDED
 
     def __get_rss_info(self, addr) -> List[RssInfo]:
