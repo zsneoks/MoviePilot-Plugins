@@ -10,6 +10,7 @@ import pytz
 from enum import Enum
 from typing import Any, Dict, List, Optional, TypedDict
 
+from app.db.subscribe_oper import SubscribeOper
 from app.chain.tmdb import TmdbChain
 from app.schemas.types import MediaType
 from app import schemas
@@ -139,11 +140,11 @@ class EpisodeNoExist(_PluginBase):
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/EpisodeNoExist.png"
     # 插件版本
-    plugin_version = "2.0.4"
+    plugin_version = "1.0.0"
     # 插件作者
-    plugin_author = "boeto"
+    plugin_author = "zsneoks"
     # 作者主页
-    author_url = "https://github.com/boeto/MoviePilot-Plugins"
+    author_url = "https://git.home.995886.xyz:40443/zsneoks/MoviePilot-Plugins.git"
     # 插件配置项ID前缀
     plugin_config_prefix = "episodenoexist_"
     # 加载顺序
@@ -659,7 +660,7 @@ class EpisodeNoExist(_PluginBase):
                     episode_total = len(filted_episodes)
 
                     # 判断用户是否已经添加订阅
-                    if self._subChain.subscribeoper.exists(tmdbid, season=season):
+                    if SubscribeOper().exists(tmdbid, season=season):
                         logger.info(f"【{title}】第【{season}】季已存在订阅, 跳过")
                         continue
                     __append_season_info(
@@ -701,7 +702,7 @@ class EpisodeNoExist(_PluginBase):
                             continue
 
                         # 判断用户是否已经添加订阅
-                        if self._subChain.subscribeoper.exists(tmdbid, season=season):
+                        if SubscribeOper().exists(tmdbid, season=season):
                             logger.info(f"【{title}】第【{season}】季已存在订阅, 跳过")
                             continue
                         # 添加不存在的季集信息
@@ -713,7 +714,7 @@ class EpisodeNoExist(_PluginBase):
                     else:
                         logger.debug(f"【{title}】第【{season}】季全集不存在")
                         # 判断用户是否已经添加订阅
-                        if self._subChain.subscribeoper.exists(tmdbid, season=season):
+                        if SubscribeOper().exists(tmdbid, season=season):
                             logger.info(f"【{title}】第【{season}】季已存在订阅, 跳过")
                             continue
                         # 该季全集不存在, 选项仅检查已有季缺失未开启时添加全部集
@@ -848,7 +849,7 @@ class EpisodeNoExist(_PluginBase):
                     break
 
         # 判断用户是否已经添加订阅
-        if self._subChain.subscribeoper.exists(tmdbid, season=season):
+        if SubscribeOper().exists(tmdbid, season=season):
             logger.info(f"{title_season} 订阅已存在")
             return True
 
