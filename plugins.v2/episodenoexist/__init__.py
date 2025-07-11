@@ -134,13 +134,13 @@ class History(TypedDict):
 
 class EpisodeNoExist(_PluginBase):
     # 插件名称
-    plugin_name = "缺失集数订阅"
+    plugin_name = "缺失剧集订阅"
     # 插件描述
     plugin_desc = "订阅媒体库缺失集数的电视剧"
     # 插件图标
     plugin_icon = "https://raw.githubusercontent.com/boeto/MoviePilot-Plugins/main/icons/EpisodeNoExist.png"
     # 插件版本
-    plugin_version = "1.0.0"
+    plugin_version = "2.1.0"
     # 插件作者
     plugin_author = "zsneoks"
     # 作者主页
